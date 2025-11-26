@@ -11,7 +11,8 @@
 // - contact groups (power/signal/etc)
 // - keying options
 
-import { sqliteTable, integer, text, real } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, integer, text, real, primaryKey } from 'drizzle-orm/sqlite-core';
 
 // -----------------------------
 // Connector Series
@@ -32,6 +33,17 @@ export const connectorSeries = sqliteTable('connector_series', {
   seriesDatasheetUrl: text('series_datasheet_url'),
   seriesImageUrl: text('series_image_url')
 });
+
+// -----------------------------
+// Distributor Links per Series
+// -----------------------------
+export const seriesDistributorLinks = sqliteTable('series_distributor_links', {
+  seriesId: integer('series_id').references(() => connectorSeries.id).notNull(),
+  distributor: text('distributor').notNull(),
+  purchaseUrl: text('purchase_url')
+}, (table) => ({
+  pk: primaryKey({ columns: [table.seriesId, table.distributor] })
+}));
 
 // -----------------------------
 // Individual Connector Parts
@@ -165,3 +177,14 @@ export const seriesRelationships = sqliteTable('series_relationships', {
   notes: text('notes')
 });
 
+// -----------------------------
+// Reported Database Issues
+// -----------------------------
+export const issueReports = sqliteTable('issue_reports', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  email: text('email'),
+  connectorName: text('connector_name'),
+  context: text('context'),
+  details: text('details').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`CURRENT_TIMESTAMP`)
+});

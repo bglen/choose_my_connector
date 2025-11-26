@@ -2,13 +2,14 @@
 
 import "dotenv/config";
 
+import { DISTRIBUTORS, distributorLabels } from "$lib/constants/distributors";
 import { db } from "$lib/db";
-import { connectorSeries } from "$lib/drizzle/schema";
+import { connectorSeries, seriesDistributorLinks } from "$lib/drizzle/schema";
 
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "csv-parse/sync";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 // ------------------------------------------------------------------
 // Helpers
@@ -77,6 +78,17 @@ async function processCsv(file: string) {
   let skipped = 0;
 
   for (const row of rows) {
+    const hasDistributorColumns = DISTRIBUTORS.some(
+      ({ csvKey }) => csvKey && csvKey in row
+    );
+    const distributorLinks = !hasDistributorColumns
+      ? []
+      : DISTRIBUTORS
+          .map(({ csvKey, label }) => ({
+            distributor: label,
+            purchaseUrl: normalize((row as Record<string, any>)[csvKey])
+          }))
+          .filter((entry) => entry.purchaseUrl);
     const name = normalize(row.name);
     const manufacturer = normalize(row.manufacturer);
 
@@ -120,36 +132,94 @@ async function processCsv(file: string) {
       .limit(1);
 
     const existingRow = existing[0];
+    let seriesId = existingRow?.id;
 
     // Insert new
     if (!existingRow) {
-      await db.insert(connectorSeries).values(incoming);
+      const insertedRows = await db
+        .insert(connectorSeries)
+        .values(incoming)
+        .returning({ id: connectorSeries.id });
+
+      seriesId = insertedRows[0]?.id ?? seriesId;
       console.log(`   ➕ Inserted: ${name} (${manufacturer})`);
       inserted++;
-      continue;
+    } else {
+      // Detect changes
+      const changes = detectChanges(existingRow, incoming);
+
+      if (Object.keys(changes).length === 0) {
+        console.log(
+          `   ⏭️  No changes: ${name} (${manufacturer}) (series metadata unchanged)`
+        );
+        skipped++;
+      } else {
+        // Update only changed fields
+        await db
+          .update(connectorSeries)
+          .set(changes)
+          .where(eq(connectorSeries.id, existingRow.id));
+
+        console.log(
+          `   🔄 Updated: ${name} (${manufacturer}) → changed: ${Object.keys(
+            changes
+          ).join(", ")}`
+        );
+        updated++;
+      }
     }
 
-    // Detect changes
-    const changes = detectChanges(existingRow, incoming);
+    // Sync distributor links only when CSV provides the columns
+    if (hasDistributorColumns) {
+      if (!seriesId) {
+        const lookup = await db
+          .select({ id: connectorSeries.id })
+          .from(connectorSeries)
+          .where(
+            and(
+              eq(connectorSeries.name, name),
+              eq(connectorSeries.manufacturer, manufacturer)
+            )
+          )
+          .limit(1);
 
-    if (Object.keys(changes).length === 0) {
-      console.log(`   ⏭️  No changes: ${name} (${manufacturer})`);
-      skipped++;
-      continue;
+        seriesId = lookup[0]?.id;
+      }
+
+      if (!seriesId) {
+        console.warn(
+          `   ⚠️  Could not resolve series id for ${name}, skipping distributor links.`
+        );
+        continue;
+      }
+
+      await db
+        .delete(seriesDistributorLinks)
+        .where(
+          and(
+            eq(seriesDistributorLinks.seriesId, seriesId),
+            inArray(
+              seriesDistributorLinks.distributor,
+              distributorLabels
+            )
+          )
+        );
+
+      if (distributorLinks.length) {
+        await db.insert(seriesDistributorLinks).values(
+          distributorLinks.map((entry) => ({
+            seriesId,
+            distributor: entry.distributor,
+            purchaseUrl: entry.purchaseUrl
+          }))
+        );
+        console.log(
+          `   🛒 Updated distributors: ${distributorLinks
+            .map((d) => d.distributor)
+            .join(", ")}`
+        );
+      }
     }
-
-    // Update only changed fields
-    await db
-      .update(connectorSeries)
-      .set(changes)
-      .where(eq(connectorSeries.id, existingRow.id));
-
-    console.log(
-      `   🔄 Updated: ${name} (${manufacturer}) → changed: ${Object.keys(
-        changes
-      ).join(", ")}`
-    );
-    updated++;
   }
 
   console.log(`\n📊 Results for ${path.basename(file)}:`);

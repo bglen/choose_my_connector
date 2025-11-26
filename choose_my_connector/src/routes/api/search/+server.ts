@@ -1,6 +1,7 @@
+import { DISTRIBUTORS, distributorSlugToLabel } from "$lib/constants/distributors";
 import { db } from "$lib/db";
-import { connectorSeries } from "$lib/drizzle/schema";
-import { and, asc, eq, gte, like, or, sql } from "drizzle-orm";
+import { connectorSeries, seriesDistributorLinks } from "$lib/drizzle/schema";
+import { and, asc, eq, exists, gte, inArray, like, or, sql } from "drizzle-orm";
 
 function parseNumberParam(value: string | null) {
     if (value === null || value === "") return null;
@@ -19,6 +20,15 @@ export async function GET({ url }) {
         .getAll("type")
         .flatMap((entry) => entry.split(","))
         .map(sanitizeType)
+        .filter(Boolean);
+
+    const distributorFilters = url
+        .searchParams
+        .getAll("distributor")
+        .flatMap((entry) => entry.split(","))
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => DISTRIBUTORS.some((distributor) => distributor.slug === value))
+        .map((value) => distributorSlugToLabel[value])
         .filter(Boolean);
 
     const filters = {
@@ -41,6 +51,21 @@ export async function GET({ url }) {
     if (filters.panel !== null) where.push(eq(connectorSeries.panelMount, filters.panel));
     if (filters.current !== null) where.push(gte(connectorSeries.maxCurrent, filters.current));
     if (filters.voltage !== null) where.push(gte(connectorSeries.maxVoltage, filters.voltage));
+    if (distributorFilters.length) {
+        where.push(
+            exists(
+                db
+                    .select({ id: seriesDistributorLinks.seriesId })
+                    .from(seriesDistributorLinks)
+                    .where(
+                        and(
+                            eq(seriesDistributorLinks.seriesId, connectorSeries.id),
+                            inArray(seriesDistributorLinks.distributor, distributorFilters)
+                        )
+                    )
+            )
+        );
+    }
 
     const results = await db
         .select({
@@ -55,13 +80,32 @@ export async function GET({ url }) {
             maxVoltage: connectorSeries.maxVoltage,
             datasheetUrl: connectorSeries.seriesDatasheetUrl,
             imageUrl: connectorSeries.seriesImageUrl,
-            notes: connectorSeries.notes
+            notes: connectorSeries.notes,
+            distributorLinks: sql<string>`json_group_array(
+                CASE
+                    WHEN ${seriesDistributorLinks.purchaseUrl} IS NOT NULL THEN
+                        json_object('distributor', ${seriesDistributorLinks.distributor}, 'purchaseUrl', ${seriesDistributorLinks.purchaseUrl})
+                END
+            )`.as("distributorLinks")
         })
         .from(connectorSeries)
+        .leftJoin(seriesDistributorLinks, eq(seriesDistributorLinks.seriesId, connectorSeries.id))
         .where(where.length ? and(...where) : undefined)
+        .groupBy(connectorSeries.id)
         .orderBy(asc(connectorSeries.manufacturer), asc(connectorSeries.name));
 
-    return new Response(JSON.stringify(results), {
+    const response = results.map((row) => {
+        const parsedLinks = row.distributorLinks
+            ? JSON.parse(row.distributorLinks).filter(Boolean)
+            : [];
+
+        return {
+            ...row,
+            distributorLinks: parsedLinks.filter((entry: any) => entry?.purchaseUrl)
+        };
+    });
+
+    return new Response(JSON.stringify(response), {
         headers: { "Content-Type": "application/json" }
     });
 }
