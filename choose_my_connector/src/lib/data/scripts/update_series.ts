@@ -39,9 +39,11 @@ function getCsvFiles(input: string): string[] {
   return [fullPath];
 }
 
-function loadCsv(file: string) {
+type CsvRow = Record<string, any>;
+
+function loadCsv(file: string): CsvRow[] {
   const raw = fs.readFileSync(file);
-  return parse(raw, { columns: true, skip_empty_lines: true });
+  return parse(raw, { columns: true, skip_empty_lines: true }) as CsvRow[];
 }
 
 function normalize(val: any) {
