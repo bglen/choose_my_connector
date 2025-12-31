@@ -30,7 +30,10 @@
     poleCount?: number | null;
     statorDiameter?: number | null;
     statorLength?: number | null;
+    statorSlotCount?: number | null;
+    rotorDiameter?: number | null;
     shaftDiameter?: number | null;
+    shaftLength?: number | null;
     maxCurrent?: number | null;
     maxVoltage?: number | null;
     maxPower?: number | null;
@@ -58,9 +61,12 @@
     becType?: string | null;
     becVoltage?: number | null;
     becCurrent?: number | null;
+    inputConnector?: string | null;
+    motorConnector?: string | null;
     telemetry?: string | null;
     braking?: string | null;
     waterproofRating?: string | null;
+    temperatureLimitC?: number | null;
     length?: number | null;
     width?: number | null;
     height?: number | null;
@@ -77,6 +83,9 @@
     dischargeCurrentContinuous?: number | null;
     dischargeCurrentBurst?: number | null;
     dischargeRateC?: number | null;
+    chargeRateC?: number | null;
+    maxChargeCurrent?: number | null;
+    cycleLife?: number | null;
     energyWh?: number | null;
     internalResistanceMilliohms?: number | null;
     connector?: string | null;
@@ -124,13 +133,24 @@
 
   type PartFilters = {
     query: string;
+    minRotorDiameter: number | "";
+    minShaftLength: number | "";
+    minStatorSlotCount: number | "";
+    minEscTemperature: number | "";
+    minChargeRateC: number | "";
+    minChargeCurrent: number | "";
+    minCycleLife: number | "";
   };
 
-  const connectionTypes: string[] = ["Brushless motor", "Electronic speed controller", "Battery"];
+  const connectionTypes = [
+    { label: "Brushless motor", value: "brushless_motor" },
+    { label: "Electronic speed controller", value: "esc" },
+    { label: "Battery", value: "battery" }
+  ];
   const fallbackImage = "/images/default_connector.jpg";
   const categoryFilters = [
     {
-      slug: "electronic speed controller",
+      slug: "esc",
       label: "Electronic speed controllers",
       blurb: "Filter by continuous/burst current and supported protocols."
     },
@@ -140,7 +160,7 @@
       blurb: "Compare chemistry, cell count, capacity, and discharge ratings."
     },
     {
-      slug: "brushless motor",
+      slug: "brushless_motor",
       label: "Brushless motors",
       blurb: "Sort by Kv, stator size, mass, and peak power."
     }
@@ -155,6 +175,17 @@
     voltage: ""
   };
 
+  const defaultPartFilters: PartFilters = {
+    query: "",
+    minRotorDiameter: "",
+    minShaftLength: "",
+    minStatorSlotCount: "",
+    minEscTemperature: "",
+    minChargeRateC: "",
+    minChargeCurrent: "",
+    minCycleLife: ""
+  };
+
   let seriesFilters: SeriesFilters = { ...defaultSeriesFilters };
   let seriesResults: SeriesResult[] = [];
   let hasSearchedSeries = false;
@@ -164,7 +195,7 @@
 
   let selectedSeries: SeriesResult | null = null;
 
-  let partFilters: PartFilters = { query: "" };
+  let partFilters: PartFilters = { ...defaultPartFilters };
   let partResults: PartResult[] = [];
   let hasSearchedParts = false;
   let partErrorMessage = "";
@@ -200,6 +231,10 @@
   };
 
   let sessionAccount: SessionAccount | null = null;
+  $: normalizedSeriesType = selectedSeries?.productType?.toLowerCase().replace(/_/g, " ") ?? "";
+  $: isMotorSeries = normalizedSeriesType.includes("motor");
+  $: isEscSeries = normalizedSeriesType.includes("esc");
+  $: isBatterySeries = normalizedSeriesType.includes("battery");
 
   const toNumber = (value: string | number | null) => {
     const num = Number(value);
@@ -232,6 +267,26 @@
     }
 
     seriesFilters = { ...seriesFilters, [key]: value };
+  }
+
+  type PartNumericKey =
+    | "minRotorDiameter"
+    | "minShaftLength"
+    | "minStatorSlotCount"
+    | "minEscTemperature"
+    | "minChargeRateC"
+    | "minChargeCurrent"
+    | "minCycleLife";
+
+  function setPartNumberFilter(key: PartNumericKey, rawValue: string | number) {
+    const numeric = toNumber(rawValue);
+
+    if (numeric === null) {
+      partFilters = { ...partFilters, [key]: "" };
+      return;
+    }
+
+    partFilters = { ...partFilters, [key]: Math.max(0, numeric) };
   }
 
   function applyTheme(nextTheme: "light" | "dark") {
@@ -422,6 +477,23 @@
 
     if (partFilters.query.trim()) params.set("q", partFilters.query.trim());
 
+    (
+      [
+        "minRotorDiameter",
+        "minShaftLength",
+        "minStatorSlotCount",
+        "minEscTemperature",
+        "minChargeRateC",
+        "minChargeCurrent",
+        "minCycleLife"
+      ] as const
+    ).forEach((key) => {
+      const value = partFilters[key];
+      if (value !== "" && value !== null && value !== undefined) {
+        params.append(key, String(value));
+      }
+    });
+
     return params;
   }
 
@@ -507,7 +579,7 @@
     selectedSeries = series;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "" };
+    partFilters = { ...defaultPartFilters };
     hasSearchedParts = false;
     partErrorMessage = "";
     searchParts();
@@ -517,7 +589,7 @@
     selectedSeries = null;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "" };
+    partFilters = { ...defaultPartFilters };
     hasSearchedParts = false;
     partErrorMessage = "";
   }
@@ -527,7 +599,7 @@
   }
 
   function clearPartFilters() {
-    partFilters = { query: "" };
+    partFilters = { ...defaultPartFilters };
   }
 
   function selectCategory(slug: string) {
@@ -541,7 +613,7 @@
     selectedSeries = null;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "" };
+    partFilters = { ...defaultPartFilters };
     hasSearchedParts = false;
     partErrorMessage = "";
     searchSeries();
@@ -833,10 +905,10 @@
                         <input
                           type="checkbox"
                           class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={seriesFilters.types.includes(type)}
-                          on:change={() => toggleType(type)}
+                          checked={seriesFilters.types.includes(type.value)}
+                          on:change={() => toggleType(type.value)}
                         />
-                        <span>{type.replaceAll("-", " ")}</span>
+                        <span>{type.label}</span>
                       </label>
                     {/each}
                   </div>
@@ -1079,7 +1151,7 @@
               </div>
             </div>
 
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <label class="space-y-1">
                 <span class="text-sm font-semibold text-slate-800">Model or variant</span>
                 <input
@@ -1089,6 +1161,117 @@
                 />
                 <p class="text-xs text-slate-500">Search model numbers, variant names, or SKUs.</p>
               </label>
+
+              {#if isMotorSeries}
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min rotor diameter (mm)</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Rotor diameter"
+                    bind:value={partFilters.minRotorDiameter}
+                    on:input={(event) =>
+                      setPartNumberFilter("minRotorDiameter", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Filter by minimum rotor size.</p>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min shaft length (mm)</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Shaft length"
+                    bind:value={partFilters.minShaftLength}
+                    on:input={(event) =>
+                      setPartNumberFilter("minShaftLength", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Match mounting depth and prop adaptors.</p>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min stator slots</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Stator slots"
+                    bind:value={partFilters.minStatorSlotCount}
+                    on:input={(event) =>
+                      setPartNumberFilter("minStatorSlotCount", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Use slot count to compare smoothness.</p>
+                </label>
+              {/if}
+
+              {#if isEscSeries}
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min temp rating (°C)</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Temperature limit"
+                    bind:value={partFilters.minEscTemperature}
+                    on:input={(event) =>
+                      setPartNumberFilter("minEscTemperature", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Keep ESCs that meet thermal targets.</p>
+                </label>
+              {/if}
+
+              {#if isBatterySeries}
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min charge rate (C)</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Charge rate"
+                    bind:value={partFilters.minChargeRateC}
+                    on:input={(event) =>
+                      setPartNumberFilter("minChargeRateC", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Ensure the pack supports your charge plan.</p>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min charge current (A)</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Charge current"
+                    bind:value={partFilters.minChargeCurrent}
+                    on:input={(event) =>
+                      setPartNumberFilter("minChargeCurrent", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Filter on absolute charge current limits.</p>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="text-sm font-semibold text-slate-800">Min cycle life</span>
+                  <input
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                    type="number"
+                    min="0"
+                    placeholder="Cycle life"
+                    bind:value={partFilters.minCycleLife}
+                    on:input={(event) =>
+                      setPartNumberFilter("minCycleLife", (event.currentTarget as HTMLInputElement).value)
+                    }
+                  />
+                  <p class="text-xs text-slate-500">Prioritize longevity for endurance builds.</p>
+                </label>
+              {/if}
             </div>
 
             <div class="space-y-3">

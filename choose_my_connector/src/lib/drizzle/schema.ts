@@ -103,7 +103,10 @@ export const motorSpecs = sqliteTable(
     poleCount: integer("pole_count"),
     statorDiameter: real("stator_diameter"),
     statorLength: real("stator_length"),
+    statorSlotCount: integer("stator_slot_count"),
+    rotorDiameter: real("rotor_diameter"),
     shaftDiameter: real("shaft_diameter"),
+    shaftLength: real("shaft_length"),
     maxCurrent: real("max_current"),
     maxVoltage: real("max_voltage"),
     maxPower: real("max_power"),
@@ -144,9 +147,12 @@ export const escSpecs = sqliteTable(
     becType: text("bec_type"),
     becVoltage: real("bec_voltage"),
     becCurrent: real("bec_current"),
+    inputConnector: text("input_connector"),
+    motorConnector: text("motor_connector"),
     telemetry: text("telemetry"),
     braking: text("braking"),
     waterproofRating: text("waterproof_rating"),
+    temperatureLimitC: real("temperature_limit_c"),
     length: real("length"),
     width: real("width"),
     height: real("height"),
@@ -176,6 +182,9 @@ export const batterySpecs = sqliteTable(
     dischargeCurrentContinuous: real("discharge_current_continuous"),
     dischargeCurrentBurst: real("discharge_current_burst"),
     dischargeRateC: real("discharge_rate_c"),
+    chargeRateC: real("charge_rate_c"),
+    maxChargeCurrent: real("max_charge_current"),
+    cycleLife: integer("cycle_life"),
     energyWh: real("energy_wh"),
     internalResistanceMilliohms: real("internal_resistance_milliohms"),
     connector: text("connector"),
@@ -245,3 +254,51 @@ export const accountSessions = sqliteTable(
     tokenHashUnique: uniqueIndex("account_sessions_token_hash_unique").on(table.tokenHash)
   })
 );
+// Product Categories: ESCs, Batteries, Motors
+// -----------------------------
+
+export const escProducts = sqliteTable('esc_products', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  manufacturer: text('manufacturer'),
+  continuousCurrent: real('continuous_current'),
+  burstCurrent: real('burst_current'),
+  minVoltage: real('min_voltage'),
+  maxVoltage: real('max_voltage'),
+  weight: real('weight'),
+  cadUrl: text('cad_url'),
+  datasheetUrl: text('datasheet_url'),
+  purchaseUrl: text('purchase_url'),
+  notes: text('notes')
+});
+
+export const batteryProducts = sqliteTable('battery_products', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  manufacturer: text('manufacturer'),
+  chemistry: text('chemistry'),
+  cellCount: integer('cell_count'),
+  capacityMah: integer('capacity_mah'),
+  dischargeC: real('discharge_c'),
+  voltage: real('voltage'),
+  weight: real('weight'),
+  cadUrl: text('cad_url'),
+  datasheetUrl: text('datasheet_url'),
+  purchaseUrl: text('purchase_url'),
+  notes: text('notes')
+});
+
+export const motorProducts = sqliteTable('motor_products', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  manufacturer: text('manufacturer'),
+  kvRating: integer('kv_rating'),
+  statorSize: text('stator_size'),
+  maxPower: real('max_power'),
+  voltage: real('voltage'),
+  weight: real('weight'),
+  cadUrl: text('cad_url'),
+  datasheetUrl: text('datasheet_url'),
+  purchaseUrl: text('purchase_url'),
+  notes: text('notes')
+});

@@ -11,7 +11,7 @@ import {
   productVariants,
   variantPurchaseLinks
 } from "$lib/drizzle/schema";
-import { and, asc, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, like, or, sql } from "drizzle-orm";
 
 function parsePositiveNumber(value: string | null) {
   if (value === null || value === "") return null;
@@ -28,6 +28,15 @@ function sanitizeSearch(value: string | null) {
 export async function GET({ url }) {
   const seriesId = parsePositiveNumber(url.searchParams.get("seriesId"));
   const query = sanitizeSearch(url.searchParams.get("q"));
+  const filters = {
+    minRotorDiameter: parsePositiveNumber(url.searchParams.get("minRotorDiameter")),
+    minShaftLength: parsePositiveNumber(url.searchParams.get("minShaftLength")),
+    minStatorSlotCount: parsePositiveNumber(url.searchParams.get("minStatorSlotCount")),
+    minEscTemperature: parsePositiveNumber(url.searchParams.get("minEscTemperature")),
+    minChargeRateC: parsePositiveNumber(url.searchParams.get("minChargeRateC")),
+    minChargeCurrent: parsePositiveNumber(url.searchParams.get("minChargeCurrent")),
+    minCycleLife: parsePositiveNumber(url.searchParams.get("minCycleLife"))
+  };
 
   if (!seriesId) {
     return new Response(JSON.stringify({ error: "seriesId is required" }), {
@@ -45,6 +54,34 @@ export async function GET({ url }) {
         like(sql`lower(${productVariants.variantName})`, `%${query}%`)
       )
     );
+  }
+
+  if (filters.minRotorDiameter !== null) {
+    where.push(gte(motorSpecs.rotorDiameter, filters.minRotorDiameter));
+  }
+
+  if (filters.minShaftLength !== null) {
+    where.push(gte(motorSpecs.shaftLength, filters.minShaftLength));
+  }
+
+  if (filters.minStatorSlotCount !== null) {
+    where.push(gte(motorSpecs.statorSlotCount, filters.minStatorSlotCount));
+  }
+
+  if (filters.minEscTemperature !== null) {
+    where.push(gte(escSpecs.temperatureLimitC, filters.minEscTemperature));
+  }
+
+  if (filters.minChargeRateC !== null) {
+    where.push(gte(batterySpecs.chargeRateC, filters.minChargeRateC));
+  }
+
+  if (filters.minChargeCurrent !== null) {
+    where.push(gte(batterySpecs.maxChargeCurrent, filters.minChargeCurrent));
+  }
+
+  if (filters.minCycleLife !== null) {
+    where.push(gte(batterySpecs.cycleLife, filters.minCycleLife));
   }
 
   const results = await db
@@ -73,7 +110,10 @@ export async function GET({ url }) {
           'poleCount', ${motorSpecs.poleCount},
           'statorDiameter', ${motorSpecs.statorDiameter},
           'statorLength', ${motorSpecs.statorLength},
+          'statorSlotCount', ${motorSpecs.statorSlotCount},
+          'rotorDiameter', ${motorSpecs.rotorDiameter},
           'shaftDiameter', ${motorSpecs.shaftDiameter},
+          'shaftLength', ${motorSpecs.shaftLength},
           'maxCurrent', ${motorSpecs.maxCurrent},
           'maxVoltage', ${motorSpecs.maxVoltage},
           'maxPower', ${motorSpecs.maxPower},
@@ -103,9 +143,12 @@ export async function GET({ url }) {
           'becType', ${escSpecs.becType},
           'becVoltage', ${escSpecs.becVoltage},
           'becCurrent', ${escSpecs.becCurrent},
+          'inputConnector', ${escSpecs.inputConnector},
+          'motorConnector', ${escSpecs.motorConnector},
           'telemetry', ${escSpecs.telemetry},
           'braking', ${escSpecs.braking},
           'waterproofRating', ${escSpecs.waterproofRating},
+          'temperatureLimitC', ${escSpecs.temperatureLimitC},
           'length', ${escSpecs.length},
           'width', ${escSpecs.width},
           'height', ${escSpecs.height},
@@ -124,6 +167,9 @@ export async function GET({ url }) {
           'dischargeCurrentContinuous', ${batterySpecs.dischargeCurrentContinuous},
           'dischargeCurrentBurst', ${batterySpecs.dischargeCurrentBurst},
           'dischargeRateC', ${batterySpecs.dischargeRateC},
+          'chargeRateC', ${batterySpecs.chargeRateC},
+          'maxChargeCurrent', ${batterySpecs.maxChargeCurrent},
+          'cycleLife', ${batterySpecs.cycleLife},
           'energyWh', ${batterySpecs.energyWh},
           'internalResistanceMilliohms', ${batterySpecs.internalResistanceMilliohms},
           'connector', ${batterySpecs.connector},
