@@ -57,6 +57,23 @@
 
   const connectionTypes: string[] = ["Wire-to-board", "Wire-to-wire", "Board-to-board"];
   const fallbackImage = "/images/default_connector.jpg";
+  const categoryFilters = [
+    {
+      slug: "electronic speed controllers",
+      label: "Electronic speed controllers",
+      blurb: "Filter by continuous/burst current and supported protocols."
+    },
+    {
+      slug: "batteries",
+      label: "Batteries",
+      blurb: "Compare chemistry, cell count, capacity, and discharge ratings."
+    },
+    {
+      slug: "brushless motors",
+      label: "Brushless motors",
+      blurb: "Sort by Kv, stator size, mass, and peak power."
+    }
+  ];
 
   const defaultSeriesFilters: SeriesFilters = {
     types: [],
@@ -95,7 +112,10 @@
     details: "",
     email: ""
   };
-  let theme: "light" | "dark" = "light";
+  let showLogin = false;
+  let loginError = "";
+  let loginForm = { email: "", password: "" };
+  let theme: "light" | "dark" = "dark";
 
   const toNumber = (value: string | number | null) => {
     const num = Number(value);
@@ -152,12 +172,31 @@
     if (!browser) return;
 
     const saved = localStorage.getItem("cmc-theme") as "light" | "dark" | null;
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    applyTheme(saved ?? (prefersDark ? "dark" : "light"));
+    applyTheme(saved ?? "dark");
   });
 
   function scrollToSearch() {
     searchSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function toggleLoginModal() {
+    showLogin = !showLogin;
+    loginError = "";
+  }
+
+  function submitLogin() {
+    loginError = "";
+    const trimmedEmail = loginForm.email.trim();
+    const trimmedPassword = loginForm.password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      loginError = "Email and password are required.";
+      return;
+    }
+
+    // Placeholder auth handler until backend is wired.
+    alert("Admin login placeholder — wire to auth backend.");
+    showLogin = false;
   }
 
   function buildSeriesSearchParams() {
@@ -244,7 +283,7 @@
 
   async function searchParts() {
     if (!selectedSeries?.id) {
-      partErrorMessage = "Choose a connector series first.";
+      partErrorMessage = "Choose a component family first.";
       return;
     }
 
@@ -304,6 +343,24 @@
     partFilters = { query: "", positions: "", rows: "" };
   }
 
+  function selectCategory(slug: string) {
+    seriesFilters = {
+      ...defaultSeriesFilters,
+      types: [slug]
+    };
+    seriesResults = [];
+    hasSearchedSeries = false;
+    seriesErrorMessage = "";
+    selectedSeries = null;
+    selectedPart = null;
+    partResults = [];
+    partFilters = { query: "", positions: "", rows: "" };
+    hasSearchedParts = false;
+    partErrorMessage = "";
+    searchSeries();
+    scrollToSearch();
+  }
+
   async function submitReport() {
     reportError = "";
     reportSuccess = "";
@@ -345,27 +402,76 @@
 
   <div class="page-container">
     <section class="hero-panel">
-      <h1 class="hero-title">Search millions of electrical connectors easilly.</h1>
+      <h1 class="hero-title">Parametric — engineering-grade powertrain components.</h1>
       <p class="lede">
-        Find the right part - even if you don't know what to search for.
+        Compare ESCs, brushless motors, and batteries by spec, then jump straight to supplier pages.
       </p>
       <div class="hero-actions hero-actions--inline">
         <input
           class="hero-search"
           type="text"
-          placeholder="Describe your application needs"
-          aria-label="Describe your application needs"
+          placeholder="Search ESCs, motors, batteries or paste a part number"
+          aria-label="Search ESCs, motors, batteries or paste a part number"
         />
       </div>
-      <div class="hero-stats">
-        <div class="stat-flow">
-          <div class="stat-chip">Choose a series</div>
-          <span class="stat-arrow" aria-hidden="true">→</span>
-          <div class="stat-chip">Pick a part</div>
-          <span class="stat-arrow" aria-hidden="true">→</span>
-          <div class="stat-chip">Download ECAD data</div>
-        </div>
+      <div class="category-grid">
+        {#each categoryFilters as category}
+          <button class="category-card" type="button" on:click={() => selectCategory(category.slug)}>
+            <div class="category-icon" aria-hidden="true">⚙️</div>
+            <div class="category-copy">
+              <p class="category-title">{category.label}</p>
+              <p class="category-blurb">{category.blurb}</p>
+            </div>
+            <span class="category-cta">Browse</span>
+          </button>
+        {/each}
+        <a class="category-card category-card--outline" href="/trends">
+          <div class="category-icon" aria-hidden="true">📈</div>
+          <div class="category-copy">
+            <p class="category-title">View trends</p>
+            <p class="category-blurb">See mass vs. power, current vs. weight, and energy density plots.</p>
+          </div>
+          <span class="category-cta">Open</span>
+        </a>
       </div>
+
+      {#if showLogin}
+        <div class="modal-backdrop" role="presentation" on:click={toggleLoginModal}></div>
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Admin login">
+          <div class="modal-header">
+            <h3>Admin login</h3>
+            <button class="ghost-button" type="button" on:click={toggleLoginModal}>Close</button>
+          </div>
+          <div class="modal-body">
+            <label class="block space-y-1">
+              <span class="text-sm font-semibold text-slate-800">Email</span>
+              <input
+                class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                type="email"
+                placeholder="you@example.com"
+                bind:value={loginForm.email}
+              />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-sm font-semibold text-slate-800">Password</span>
+              <input
+                class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                type="password"
+                placeholder="••••••••"
+                bind:value={loginForm.password}
+              />
+            </label>
+            {#if loginError}
+              <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{loginError}</p>
+            {/if}
+          </div>
+          <div class="modal-footer">
+            <button class="primary-button" type="button" on:click={submitLogin}>Log in</button>
+            <button class="secondary-button" type="button" on:click={toggleLoginModal}>Cancel</button>
+          </div>
+          <p class="modal-note">Placeholder login — wire to your auth backend.</p>
+        </div>
+      {/if}
     </section>
 
     <section class="stack" id="search" bind:this={searchSection}>
@@ -374,8 +480,8 @@
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1</p>
-              <h2 class="text-lg font-semibold text-slate-900">Choose a connector series</h2>
-              <p class="text-sm text-slate-700">Filter down the families, then pick the one you want to buy parts from.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Browse components by family</h2>
+              <p class="text-sm text-slate-700">Filter down ESC, battery, and brushless motor families, then drill into parts.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button class="ghost-button" type="button" on:click={toggleTheme}>
@@ -485,7 +591,7 @@
                     <option value="1">Yes</option>
                     <option value="0">No</option>
                   </select>
-                  <p class="text-xs text-slate-500">Limit to connectors with mounting hardware for front or rear panels.</p>
+                  <p class="text-xs text-slate-500">Limit to components with mounting hardware for front or rear panels.</p>
                 </label>
               </div>
 
@@ -580,9 +686,9 @@
               {/if}
 
               {#if hasSearchedSeries && seriesResults.length === 0 && !seriesErrorMessage}
-                <p class="text-sm text-slate-600">No connector series matched those filters.</p>
+                <p class="text-sm text-slate-600">No component families matched those filters.</p>
               {:else if seriesResults.length === 0 && !seriesErrorMessage}
-                <p class="text-sm text-slate-600">Start searching to see connector series.</p>
+                <p class="text-sm text-slate-600">Start searching to see component families.</p>
               {/if}
 
               {#each seriesResults as item}
@@ -685,7 +791,7 @@
                   Search parts in {selectedSeries.name}
                 </h2>
                 <p class="text-sm text-slate-700">
-                  Look up the exact connector part number, then pick it to see purchase and CAD/ECAD links.
+                  Look up the exact part number, then pick it to see supplier and CAD/ECAD links.
                 </p>
               </div>
               <div class="flex gap-2">
@@ -856,10 +962,10 @@
             <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-emerald-200">Step 3</p>
-                <h2 class="text-lg font-semibold">Checkout & downloads</h2>
+                <h2 class="text-lg font-semibold">Supplier links & downloads</h2>
                 <p class="text-sm text-slate-200">
                   You picked {selectedPart.partNumber || "this part"} from {selectedSeries?.name}. Grab a CAD/ECAD
-                  package or jump to a distributor.
+                  package or jump to a supplier.
                 </p>
               </div>
               <button
@@ -927,9 +1033,9 @@
         <section class="panelized space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm" id="report">
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <p class="text-sm font-semibold text-amber-900">See something wrong in the database?</p>
-              <p class="text-sm text-amber-800">
-                Share the series name and what's incorrect so we can correct it quickly.
+                <p class="text-sm font-semibold text-amber-900">See something wrong in the database?</p>
+                <p class="text-sm text-amber-800">
+                  Share the component name and what's incorrect so we can correct it quickly.
               </p>
             </div>
             <button
@@ -949,10 +1055,10 @@
             <form class="space-y-3 rounded-lg bg-white p-4 shadow-sm" on:submit|preventDefault={submitReport}>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="block space-y-1">
-                  <span class="text-sm font-semibold text-slate-800">Connector series or part</span>
+                  <span class="text-sm font-semibold text-slate-800">Component series or part</span>
                   <input
                     class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    placeholder="e.g. JST XH header"
+                    placeholder="e.g. 2306 brushless motor"
                     bind:value={reportForm.connectorName}
                   />
                   <p class="text-xs text-slate-500">Optional but helps us find the record fast.</p>
@@ -1027,12 +1133,13 @@
     </section>
 
     <footer class="site-footer">
-      <p class="brand-title">Choose My Connector</p>
+      <p class="brand-title">Parametric</p>
       <p class="muted">Built for engineers who want fewer tabs and faster decisions.</p>
       <div class="footer-links">
         <button class="ghost-button" type="button" on:click={() => (showReportForm = true)}>
           Report an issue
         </button>
+        <button class="ghost-button" type="button" on:click={toggleLoginModal}>Admin login</button>
       </div>
     </footer>
   </div>
@@ -1061,13 +1168,13 @@
   .page-glow--left {
     top: -180px;
     left: -120px;
-    background: radial-gradient(circle, rgba(124, 58, 237, 0.3), transparent 55%);
+    background: radial-gradient(circle, rgba(79, 123, 191, 0.24), transparent 55%);
   }
 
   .page-glow--right {
     bottom: -220px;
     right: -160px;
-    background: radial-gradient(circle, rgba(6, 182, 212, 0.28), transparent 60%);
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.2), transparent 60%);
   }
 
   .page-container {
@@ -1138,7 +1245,7 @@
     padding: 48px 32px;
     border-radius: 22px;
     border: 1px solid var(--border);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--panel) 90%, transparent), rgba(124, 58, 237, 0.08));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--panel) 94%, transparent), rgba(79, 123, 191, 0.12));
     box-shadow: var(--card-shadow);
   }
 
@@ -1146,8 +1253,8 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 30% 30%, rgba(124, 58, 237, 0.1), transparent 45%),
-      radial-gradient(circle at 70% 10%, rgba(6, 182, 212, 0.12), transparent 40%);
+    background: radial-gradient(circle at 30% 30%, rgba(79, 123, 191, 0.1), transparent 45%),
+      radial-gradient(circle at 70% 10%, rgba(56, 189, 248, 0.14), transparent 40%);
     pointer-events: none;
   }
 
@@ -1190,9 +1297,9 @@
     width: 100%;
     padding: 16px 18px;
     border-radius: 18px;
-    border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
-    background: #ffffff;
-    box-shadow: 0 18px 48px rgba(12, 26, 75, 0.14);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    background: color-mix(in srgb, var(--panel) 90%, transparent);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
     font-size: 1rem;
     color: var(--text-primary);
     outline: none;
@@ -1204,51 +1311,75 @@
   }
 
   .hero-search:focus {
-    box-shadow: 0 20px 52px rgba(12, 26, 75, 0.16);
+    box-shadow: 0 20px 52px rgba(0, 0, 0, 0.42);
     transform: translateY(-1px);
   }
 
-  .hero-stats {
-    margin-top: 26px;
-    display: flex;
-    justify-content: center;
-  }
-
-  :global(:root[data-theme='dark']) .hero-search {
-    color: #0f172a;
-    background: #ffffff;
-  }
-
-  :global(:root[data-theme='dark']) .hero-search::placeholder {
-    color: #4b5563;
-  }
-
-  .stat-flow {
-    display: inline-flex;
-    align-items: center;
+  .category-grid {
+    margin-top: 22px;
+    display: grid;
     gap: 12px;
-    padding: 10px 14px;
-    border-radius: 999px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .category-card {
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
-    box-shadow: var(--card-shadow);
-    flex-wrap: wrap;
-    justify-content: center;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
   }
 
-  .stat-chip {
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--text-primary);
-    font-weight: 700;
-    font-size: 0.95rem;
+  .category-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   }
 
-  .stat-arrow {
-    color: var(--text-muted);
-    font-weight: 700;
+  .category-card--outline {
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+  }
+
+  .category-icon {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
     font-size: 1.1rem;
+  }
+
+  .category-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .category-title {
+    margin: 0;
+    font-weight: 700;
+    font-size: 0.98rem;
+  }
+
+  .category-blurb {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+
+  .category-cta {
+    font-weight: 700;
+    color: var(--accent-strong);
+    font-size: 0.9rem;
   }
 
   .stack {
@@ -1271,8 +1402,8 @@
   }
 
   .panelized-accent {
-    background: linear-gradient(145deg, rgba(16, 185, 129, 0.08), rgba(124, 58, 237, 0.24));
-    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: linear-gradient(145deg, rgba(61, 171, 245, 0.14), rgba(12, 20, 35, 0.7));
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
     box-shadow: var(--glow);
   }
 
@@ -1350,6 +1481,61 @@
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    z-index: 20;
+  }
+
+  .modal {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    max-width: 420px;
+    height: fit-content;
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5);
+    padding: 18px;
+    z-index: 30;
+    display: grid;
+    gap: 14px;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  .modal-body {
+    display: grid;
+    gap: 10px;
+  }
+
+  .modal-footer {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .modal-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.86rem;
   }
 
   @media (min-width: 768px) {
