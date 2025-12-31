@@ -4,8 +4,14 @@ import {
   distributorLabelToSlug
 } from "$lib/constants/distributors";
 import { db } from "$lib/db";
-import { connectorParts, partPrices } from "$lib/drizzle/schema";
-import { and, asc, eq, like, sql } from "drizzle-orm";
+import {
+  batterySpecs,
+  escSpecs,
+  motorSpecs,
+  productVariants,
+  variantPurchaseLinks
+} from "$lib/drizzle/schema";
+import { and, asc, eq, like, or, sql } from "drizzle-orm";
 
 function parsePositiveNumber(value: string | null) {
   if (value === null || value === "") return null;
@@ -22,8 +28,6 @@ function sanitizeSearch(value: string | null) {
 export async function GET({ url }) {
   const seriesId = parsePositiveNumber(url.searchParams.get("seriesId"));
   const query = sanitizeSearch(url.searchParams.get("q"));
-  const positions = parsePositiveNumber(url.searchParams.get("positions"));
-  const rows = parsePositiveNumber(url.searchParams.get("rows"));
 
   if (!seriesId) {
     return new Response(JSON.stringify({ error: "seriesId is required" }), {
@@ -32,43 +36,127 @@ export async function GET({ url }) {
     });
   }
 
-  const where = [eq(connectorParts.seriesId, seriesId)];
+  const where = [eq(productVariants.seriesId, seriesId)];
 
   if (query) {
-    where.push(like(sql`lower(${connectorParts.partNumber})`, `%${query}%`));
+    where.push(
+      or(
+        like(sql`lower(${productVariants.modelNumber})`, `%${query}%`),
+        like(sql`lower(${productVariants.variantName})`, `%${query}%`)
+      )
+    );
   }
-
-  if (positions !== null) where.push(eq(connectorParts.positions, positions));
-  if (rows !== null) where.push(eq(connectorParts.rows, rows));
 
   const results = await db
     .select({
-      id: connectorParts.id,
-      seriesId: connectorParts.seriesId,
-      partNumber: connectorParts.partNumber,
-      positions: connectorParts.positions,
-      rows: connectorParts.rows,
-      pitch: connectorParts.pitch,
-      datasheetUrl: connectorParts.datasheetUrl,
-      cadUrl: connectorParts.cadUrl,
-      imageUrl: connectorParts.imageUrl,
+      id: productVariants.id,
+      seriesId: productVariants.seriesId,
+      modelNumber: productVariants.modelNumber,
+      variantName: productVariants.variantName,
+      sku: productVariants.sku,
+      nominalVoltage: productVariants.nominalVoltage,
+      maxVoltage: productVariants.maxVoltage,
+      maxCurrent: productVariants.maxCurrent,
+      maxPower: productVariants.maxPower,
+      capacityMah: productVariants.capacityMah,
+      weightGrams: productVariants.weightGrams,
+      length: productVariants.length,
+      width: productVariants.width,
+      height: productVariants.height,
+      datasheetUrl: productVariants.datasheetUrl,
+      cadUrl: productVariants.cadUrl,
+      imageUrl: productVariants.imageUrl,
+      motorSpecs: sql<string>`CASE
+        WHEN ${motorSpecs.variantId} IS NOT NULL THEN json_object(
+          'motorType', ${motorSpecs.motorType},
+          'kvRating', ${motorSpecs.kvRating},
+          'poleCount', ${motorSpecs.poleCount},
+          'statorDiameter', ${motorSpecs.statorDiameter},
+          'statorLength', ${motorSpecs.statorLength},
+          'shaftDiameter', ${motorSpecs.shaftDiameter},
+          'maxCurrent', ${motorSpecs.maxCurrent},
+          'maxVoltage', ${motorSpecs.maxVoltage},
+          'maxPower', ${motorSpecs.maxPower},
+          'maxTorque', ${motorSpecs.maxTorque},
+          'noLoadCurrent', ${motorSpecs.noLoadCurrent},
+          'resistanceMilliohms', ${motorSpecs.resistanceMilliohms},
+          'inductanceMicrohenry', ${motorSpecs.inductanceMicrohenry},
+          'efficiency', ${motorSpecs.efficiency},
+          'weightGrams', ${motorSpecs.weightGrams},
+          'mountingPattern', ${motorSpecs.mountingPattern},
+          'bearingType', ${motorSpecs.bearingType},
+          'temperatureLimitC', ${motorSpecs.temperatureLimitC},
+          'notes', ${motorSpecs.notes}
+        )
+      END`.as("motorSpecs"),
+      escSpecs: sql<string>`CASE
+        WHEN ${escSpecs.variantId} IS NOT NULL THEN json_object(
+          'firmware', ${escSpecs.firmware},
+          'continuousCurrent', ${escSpecs.continuousCurrent},
+          'burstCurrent', ${escSpecs.burstCurrent},
+          'minVoltage', ${escSpecs.minVoltage},
+          'maxVoltage', ${escSpecs.maxVoltage},
+          'cellCountMin', ${escSpecs.cellCountMin},
+          'cellCountMax', ${escSpecs.cellCountMax},
+          'protocols', ${escSpecs.protocols},
+          'pwmFrequencyKhz', ${escSpecs.pwmFrequencyKhz},
+          'becType', ${escSpecs.becType},
+          'becVoltage', ${escSpecs.becVoltage},
+          'becCurrent', ${escSpecs.becCurrent},
+          'telemetry', ${escSpecs.telemetry},
+          'braking', ${escSpecs.braking},
+          'waterproofRating', ${escSpecs.waterproofRating},
+          'length', ${escSpecs.length},
+          'width', ${escSpecs.width},
+          'height', ${escSpecs.height},
+          'weightGrams', ${escSpecs.weightGrams},
+          'notes', ${escSpecs.notes}
+        )
+      END`.as("escSpecs"),
+      batterySpecs: sql<string>`CASE
+        WHEN ${batterySpecs.variantId} IS NOT NULL THEN json_object(
+          'chemistry', ${batterySpecs.chemistry},
+          'capacityMah', ${batterySpecs.capacityMah},
+          'nominalVoltage', ${batterySpecs.nominalVoltage},
+          'maxVoltage', ${batterySpecs.maxVoltage},
+          'minVoltage', ${batterySpecs.minVoltage},
+          'cellCount', ${batterySpecs.cellCount},
+          'dischargeCurrentContinuous', ${batterySpecs.dischargeCurrentContinuous},
+          'dischargeCurrentBurst', ${batterySpecs.dischargeCurrentBurst},
+          'dischargeRateC', ${batterySpecs.dischargeRateC},
+          'energyWh', ${batterySpecs.energyWh},
+          'internalResistanceMilliohms', ${batterySpecs.internalResistanceMilliohms},
+          'connector', ${batterySpecs.connector},
+          'balanceConnector', ${batterySpecs.balanceConnector},
+          'length', ${batterySpecs.length},
+          'width', ${batterySpecs.width},
+          'height', ${batterySpecs.height},
+          'weightGrams', ${batterySpecs.weightGrams},
+          'notes', ${batterySpecs.notes}
+        )
+      END`.as("batterySpecs"),
       distributorPrices: sql<string>`json_group_array(
         CASE
-          WHEN ${partPrices.id} IS NOT NULL THEN
+          WHEN ${variantPurchaseLinks.id} IS NOT NULL THEN
             json_object(
-              'distributor', ${partPrices.distributor},
-              'minQty', ${partPrices.minQty},
-              'unitPrice', ${partPrices.unitPrice},
-              'currency', ${partPrices.currency}
+              'distributor', ${variantPurchaseLinks.distributor},
+              'minQty', ${variantPurchaseLinks.minQty},
+              'unitPrice', ${variantPurchaseLinks.unitPrice},
+              'currency', ${variantPurchaseLinks.currency},
+              'purchaseUrl', ${variantPurchaseLinks.purchaseUrl},
+              'sku', ${variantPurchaseLinks.sku}
             )
         END
       )`.as("distributorPrices")
     })
-    .from(connectorParts)
-    .leftJoin(partPrices, eq(partPrices.partId, connectorParts.id))
+    .from(productVariants)
+    .leftJoin(variantPurchaseLinks, eq(variantPurchaseLinks.variantId, productVariants.id))
+    .leftJoin(motorSpecs, eq(motorSpecs.variantId, productVariants.id))
+    .leftJoin(escSpecs, eq(escSpecs.variantId, productVariants.id))
+    .leftJoin(batterySpecs, eq(batterySpecs.variantId, productVariants.id))
     .where(and(...where))
-    .groupBy(connectorParts.id)
-    .orderBy(asc(connectorParts.partNumber));
+    .groupBy(productVariants.id)
+    .orderBy(asc(productVariants.modelNumber));
 
   const fallbackDistributors = DISTRIBUTORS.map(({ label }) => label);
 
@@ -78,6 +166,8 @@ export async function GET({ url }) {
       minQty?: number;
       unitPrice?: number;
       currency?: string;
+      purchaseUrl?: string;
+      sku?: string;
     }> = row.distributorPrices ? JSON.parse(row.distributorPrices).filter(Boolean) : [];
 
     const distributorsFromPrices = parsedPrices
@@ -90,7 +180,10 @@ export async function GET({ url }) {
 
     const purchaseLinks = distributors
       .map((distributor) => {
-        const url = buildDistributorPurchaseUrl(distributor, row.partNumber);
+        const searchTerm = row.modelNumber ?? row.variantName ?? "";
+        const url =
+          parsedPrices.find((entry) => entry.distributor === distributor)?.purchaseUrl ||
+          buildDistributorPurchaseUrl(distributor, searchTerm);
         if (!url) return null;
 
         const slug =
@@ -105,23 +198,27 @@ export async function GET({ url }) {
       .filter((entry) => typeof entry.unitPrice === "number")
       .sort((a, b) => (a.unitPrice ?? 0) - (b.unitPrice ?? 0))[0];
 
-    const ecadUrl = row.partNumber
-      ? `https://www.snapeda.com/search/?q=${encodeURIComponent(row.partNumber)}`
-      : null;
+    const ecadUrl =
+      row.modelNumber || row.variantName
+        ? `https://www.snapeda.com/search/?q=${encodeURIComponent(row.modelNumber ?? row.variantName ?? "")}`
+        : null;
 
     const cadUrl = row.cadUrl || ecadUrl;
 
     return {
       ...row,
+      motorSpecs: row.motorSpecs ? JSON.parse(row.motorSpecs) : null,
+      escSpecs: row.escSpecs ? JSON.parse(row.escSpecs) : null,
+      batterySpecs: row.batterySpecs ? JSON.parse(row.batterySpecs) : null,
       distributorPrices: parsedPrices,
       purchaseLinks,
       lowestPrice: lowestPrice
         ? {
-            distributor: lowestPrice.distributor ?? "Distributor",
-            minQty: lowestPrice.minQty,
-            unitPrice: lowestPrice.unitPrice,
-            currency: lowestPrice.currency || "USD"
-          }
+          distributor: lowestPrice.distributor ?? "Distributor",
+          minQty: lowestPrice.minQty,
+          unitPrice: lowestPrice.unitPrice,
+          currency: lowestPrice.currency || "USD"
+        }
         : null,
       cadUrl,
       ecadUrl

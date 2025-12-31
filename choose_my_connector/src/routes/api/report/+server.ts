@@ -17,7 +17,7 @@ export async function POST({ request }) {
     }
 
     const details = clean(payload.details);
-    const connectorName = clean(payload.connectorName);
+    const productName = clean(payload.productName);
     const context = clean(payload.context);
     const email = clean(payload.email);
 
@@ -31,7 +31,7 @@ export async function POST({ request }) {
     try {
         await db.insert(issueReports).values({
             details: details.slice(0, 2000),
-            connectorName: connectorName ? connectorName.slice(0, 200) : undefined,
+            productName: productName ? productName.slice(0, 200) : undefined,
             context: context ? context.slice(0, 500) : undefined,
             email: email ? email.slice(0, 320) : undefined
         });

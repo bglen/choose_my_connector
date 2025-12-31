@@ -1,10 +1,10 @@
-// To use: npx tsx src/lib/data/scripts/update_series.ts src/lib/data/series_data.csv
+// To use: npx tsx src/lib/data/scripts/update_series.ts src/lib/data/product_series.csv
 
 import "dotenv/config";
 
 import { DISTRIBUTORS, distributorLabels } from "$lib/constants/distributors";
 import { db } from "$lib/db";
-import { connectorSeries, seriesDistributorLinks } from "$lib/drizzle/schema";
+import { productSeries, seriesPurchaseLinks } from "$lib/drizzle/schema";
 
 import fs from "node:fs";
 import path from "node:path";
@@ -93,6 +93,7 @@ async function processCsv(file: string) {
           .filter((entry) => entry.purchaseUrl);
     const name = normalize(row.name);
     const manufacturer = normalize(row.manufacturer);
+    const productType = normalize(row.productType);
 
     if (!name) {
       console.log("   ⏭️  Missing name, skipping row.");
@@ -105,30 +106,38 @@ async function processCsv(file: string) {
       skipped++;
       continue;
     }
+    if (!productType) {
+      console.log(`   ⏭️  '${name}' is missing productType, skipping.`);
+      skipped++;
+      continue;
+    }
 
     // Prepare row for DB insert/update
     const incoming = {
       name,
       manufacturer,
-      connectionType: normalize(row.connectionType),
-      waterproof: normalize(row.waterproof),
-      panelMount: normalize(row.panelMount),
-      pitch: normalize(row.pitch),
-      maxCurrent: normalize(row.maxCurrent),
+      productType,
+      description: normalize(row.description),
+      minVoltage: normalize(row.minVoltage),
       maxVoltage: normalize(row.maxVoltage),
+      maxCurrent: normalize(row.maxCurrent),
+      maxPower: normalize(row.maxPower),
+      minCapacityMah: normalize(row.minCapacityMah),
+      maxCapacityMah: normalize(row.maxCapacityMah),
       notes: normalize(row.notes),
       seriesDatasheetUrl: normalize(row.seriesDatasheetUrl),
+      seriesCadUrl: normalize(row.seriesCadUrl),
       seriesImageUrl: normalize(row.seriesImageUrl)
     };
 
     // Look for existing: name + manufacturer
     const existing = await db
       .select()
-      .from(connectorSeries)
+      .from(productSeries)
       .where(
         and(
-          eq(connectorSeries.name, name),
-          eq(connectorSeries.manufacturer, manufacturer)
+          eq(productSeries.name, name),
+          eq(productSeries.manufacturer, manufacturer)
         )
       )
       .limit(1);
@@ -139,9 +148,9 @@ async function processCsv(file: string) {
     // Insert new
     if (!existingRow) {
       const insertedRows = await db
-        .insert(connectorSeries)
+        .insert(productSeries)
         .values(incoming)
-        .returning({ id: connectorSeries.id });
+        .returning({ id: productSeries.id });
 
       seriesId = insertedRows[0]?.id ?? seriesId;
       console.log(`   ➕ Inserted: ${name} (${manufacturer})`);
@@ -158,9 +167,9 @@ async function processCsv(file: string) {
       } else {
         // Update only changed fields
         await db
-          .update(connectorSeries)
+          .update(productSeries)
           .set(changes)
-          .where(eq(connectorSeries.id, existingRow.id));
+          .where(eq(productSeries.id, existingRow.id));
 
         console.log(
           `   🔄 Updated: ${name} (${manufacturer}) → changed: ${Object.keys(
@@ -175,12 +184,12 @@ async function processCsv(file: string) {
     if (hasDistributorColumns) {
       if (!seriesId) {
         const lookup = await db
-          .select({ id: connectorSeries.id })
-          .from(connectorSeries)
+          .select({ id: productSeries.id })
+          .from(productSeries)
           .where(
             and(
-              eq(connectorSeries.name, name),
-              eq(connectorSeries.manufacturer, manufacturer)
+              eq(productSeries.name, name),
+              eq(productSeries.manufacturer, manufacturer)
             )
           )
           .limit(1);
@@ -196,19 +205,19 @@ async function processCsv(file: string) {
       }
 
       await db
-        .delete(seriesDistributorLinks)
+        .delete(seriesPurchaseLinks)
         .where(
           and(
-            eq(seriesDistributorLinks.seriesId, seriesId),
+            eq(seriesPurchaseLinks.seriesId, seriesId),
             inArray(
-              seriesDistributorLinks.distributor,
+              seriesPurchaseLinks.distributor,
               distributorLabels
             )
           )
         );
 
       if (distributorLinks.length) {
-        await db.insert(seriesDistributorLinks).values(
+        await db.insert(seriesPurchaseLinks).values(
           distributorLinks.map((entry) => ({
             seriesId,
             distributor: entry.distributor,
@@ -235,7 +244,7 @@ async function processCsv(file: string) {
 // ------------------------------------------------------------------
 
 async function main() {
-  console.log("🚀 Starting connector series update…\n");
+  console.log("🚀 Starting product series update…\n");
 
   const files = getCsvFiles(targetPath);
 
@@ -243,7 +252,7 @@ async function main() {
     await processCsv(file);
   }
 
-  console.log("\n🎉 Done updating connector series.");
+  console.log("\n🎉 Done updating product series.");
   process.exit(0);
 }
 

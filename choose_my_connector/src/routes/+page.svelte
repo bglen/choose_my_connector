@@ -8,12 +8,13 @@
     id: number;
     name: string;
     manufacturer?: string | null;
-    connectionType?: string | null;
-    waterproof?: number | null;
-    panelMount?: number | null;
-    pitch?: number | null;
-    maxCurrent?: number | null;
+    productType?: string | null;
+    minVoltage?: number | null;
     maxVoltage?: number | null;
+    maxCurrent?: number | null;
+    maxPower?: number | null;
+    minCapacityMah?: number | null;
+    maxCapacityMah?: number | null;
     datasheetUrl?: string | null;
     cadUrl?: string | null;
     imageUrl?: string | null;
@@ -23,17 +24,91 @@
 
   type PartPurchaseLink = { distributor: string; url: string; slug?: string };
   type PricePreview = { distributor?: string; minQty?: number; unitPrice?: number; currency?: string | null };
+  type MotorSpecs = {
+    motorType?: string | null;
+    kvRating?: number | null;
+    poleCount?: number | null;
+    statorDiameter?: number | null;
+    statorLength?: number | null;
+    shaftDiameter?: number | null;
+    maxCurrent?: number | null;
+    maxVoltage?: number | null;
+    maxPower?: number | null;
+    maxTorque?: number | null;
+    noLoadCurrent?: number | null;
+    resistanceMilliohms?: number | null;
+    inductanceMicrohenry?: number | null;
+    efficiency?: number | null;
+    weightGrams?: number | null;
+    mountingPattern?: string | null;
+    bearingType?: string | null;
+    temperatureLimitC?: number | null;
+    notes?: string | null;
+  };
+  type EscSpecs = {
+    firmware?: string | null;
+    continuousCurrent?: number | null;
+    burstCurrent?: number | null;
+    minVoltage?: number | null;
+    maxVoltage?: number | null;
+    cellCountMin?: number | null;
+    cellCountMax?: number | null;
+    protocols?: string | null;
+    pwmFrequencyKhz?: number | null;
+    becType?: string | null;
+    becVoltage?: number | null;
+    becCurrent?: number | null;
+    telemetry?: string | null;
+    braking?: string | null;
+    waterproofRating?: string | null;
+    length?: number | null;
+    width?: number | null;
+    height?: number | null;
+    weightGrams?: number | null;
+    notes?: string | null;
+  };
+  type BatterySpecs = {
+    chemistry?: string | null;
+    capacityMah?: number | null;
+    nominalVoltage?: number | null;
+    maxVoltage?: number | null;
+    minVoltage?: number | null;
+    cellCount?: number | null;
+    dischargeCurrentContinuous?: number | null;
+    dischargeCurrentBurst?: number | null;
+    dischargeRateC?: number | null;
+    energyWh?: number | null;
+    internalResistanceMilliohms?: number | null;
+    connector?: string | null;
+    balanceConnector?: string | null;
+    length?: number | null;
+    width?: number | null;
+    height?: number | null;
+    weightGrams?: number | null;
+    notes?: string | null;
+  };
   type PartResult = {
     id: number;
     seriesId: number;
-    partNumber?: string | null;
-    positions?: number | null;
-    rows?: number | null;
-    pitch?: number | null;
+    modelNumber?: string | null;
+    variantName?: string | null;
+    sku?: string | null;
+    nominalVoltage?: number | null;
+    maxVoltage?: number | null;
+    maxCurrent?: number | null;
+    maxPower?: number | null;
+    capacityMah?: number | null;
+    weightGrams?: number | null;
+    length?: number | null;
+    width?: number | null;
+    height?: number | null;
     datasheetUrl?: string | null;
     cadUrl?: string | null;
     ecadUrl?: string | null;
     imageUrl?: string | null;
+    motorSpecs?: MotorSpecs | null;
+    escSpecs?: EscSpecs | null;
+    batterySpecs?: BatterySpecs | null;
     purchaseLinks?: PartPurchaseLink[];
     lowestPrice?: PricePreview | null;
   };
@@ -41,35 +116,31 @@
   type SeriesFilters = {
     types: string[];
     distributors: string[];
-    waterproof: "" | "1" | "0";
-    panel: "" | "1" | "0";
-    minContacts: number | "";
-    maxContacts: number | "";
+    minPower: number | "";
+    maxPower: number | "";
     current: number | "";
     voltage: number | "";
   };
 
   type PartFilters = {
     query: string;
-    positions: number | "";
-    rows: number | "";
   };
 
-  const connectionTypes: string[] = ["Wire-to-board", "Wire-to-wire", "Board-to-board"];
+  const connectionTypes: string[] = ["Brushless motor", "Electronic speed controller", "Battery"];
   const fallbackImage = "/images/default_connector.jpg";
   const categoryFilters = [
     {
-      slug: "electronic speed controllers",
+      slug: "electronic speed controller",
       label: "Electronic speed controllers",
       blurb: "Filter by continuous/burst current and supported protocols."
     },
     {
-      slug: "batteries",
+      slug: "battery",
       label: "Batteries",
       blurb: "Compare chemistry, cell count, capacity, and discharge ratings."
     },
     {
-      slug: "brushless motors",
+      slug: "brushless motor",
       label: "Brushless motors",
       blurb: "Sort by Kv, stator size, mass, and peak power."
     }
@@ -78,10 +149,8 @@
   const defaultSeriesFilters: SeriesFilters = {
     types: [],
     distributors: [],
-    waterproof: "",
-    panel: "",
-    minContacts: "",
-    maxContacts: "",
+    minPower: "",
+    maxPower: "",
     current: "",
     voltage: ""
   };
@@ -95,7 +164,7 @@
 
   let selectedSeries: SeriesResult | null = null;
 
-  let partFilters: PartFilters = { query: "", positions: "", rows: "" };
+  let partFilters: PartFilters = { query: "" };
   let partResults: PartResult[] = [];
   let hasSearchedParts = false;
   let partErrorMessage = "";
@@ -107,7 +176,7 @@
   let reportError = "";
   let reportSuccess = "";
   let reportForm = {
-    connectorName: "",
+    productName: "",
     context: "",
     details: "",
     email: ""
@@ -122,7 +191,7 @@
     return Number.isNaN(num) ? null : num;
   };
 
-  type SeriesNumericKey = "minContacts" | "maxContacts" | "current" | "voltage";
+  type SeriesNumericKey = "minPower" | "maxPower" | "current" | "voltage";
 
   function setSeriesNumberFilter(key: SeriesNumericKey, rawValue: string | number) {
     const numeric = toNumber(rawValue);
@@ -134,25 +203,20 @@
 
     let value = Math.max(0, numeric);
 
-    if (key === "maxContacts") {
-      const minVal = toNumber(seriesFilters.minContacts as number | "");
+    if (key === "maxPower") {
+      const minVal = toNumber(seriesFilters.minPower as number | "");
       if (minVal !== null && value < minVal) value = minVal;
     }
 
-    if (key === "minContacts") {
-      const maxVal = toNumber(seriesFilters.maxContacts as number | "");
+    if (key === "minPower") {
+      const maxVal = toNumber(seriesFilters.maxPower as number | "");
       if (maxVal !== null && maxVal < value) {
-        seriesFilters = { ...seriesFilters, [key]: value, maxContacts: value };
+        seriesFilters = { ...seriesFilters, [key]: value, maxPower: value };
         return;
       }
     }
 
     seriesFilters = { ...seriesFilters, [key]: value };
-  }
-
-  function setPartNumberFilter(key: "positions" | "rows", rawValue: string | number) {
-    const numeric = toNumber(rawValue);
-    partFilters = { ...partFilters, [key]: numeric === null ? "" : Math.max(0, numeric) };
   }
 
   function applyTheme(nextTheme: "light" | "dark") {
@@ -210,11 +274,7 @@
       seriesFilters.distributors.forEach((distributor) => params.append("distributor", distributor));
     }
 
-    (["waterproof", "panel"] as const).forEach((key) => {
-      const value = seriesFilters[key];
-      if (value !== "") params.append(key, String(value));
-    });
-    (["minContacts", "maxContacts", "current", "voltage"] as const).forEach((key) => {
+    (["minPower", "maxPower", "current", "voltage"] as const).forEach((key) => {
       const value = seriesFilters[key];
       if (value !== "" && value !== null && value !== undefined) {
         params.append(key, String(value));
@@ -232,8 +292,6 @@
     params.set("seriesId", String(selectedSeries.id));
 
     if (partFilters.query.trim()) params.set("q", partFilters.query.trim());
-    if (partFilters.positions !== "") params.set("positions", String(partFilters.positions));
-    if (partFilters.rows !== "") params.set("rows", String(partFilters.rows));
 
     return params;
   }
@@ -295,7 +353,7 @@
       const res = await fetch(`/api/parts?${params.toString()}`);
 
       if (!res.ok) {
-        partErrorMessage = "Part search failed — please try again.";
+        partErrorMessage = "Variant search failed — please try again.";
         partResults = [];
         hasSearchedParts = true;
         return;
@@ -309,7 +367,7 @@
       }
     } catch (error) {
       console.error("Part search error", error);
-      partErrorMessage = "Unable to reach the part search API.";
+      partErrorMessage = "Unable to reach the variant search API.";
       partResults = [];
     } finally {
       isSearchingParts = false;
@@ -320,7 +378,7 @@
     selectedSeries = series;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "", positions: "", rows: "" };
+    partFilters = { query: "" };
     hasSearchedParts = false;
     partErrorMessage = "";
     searchParts();
@@ -330,7 +388,7 @@
     selectedSeries = null;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "", positions: "", rows: "" };
+    partFilters = { query: "" };
     hasSearchedParts = false;
     partErrorMessage = "";
   }
@@ -340,7 +398,7 @@
   }
 
   function clearPartFilters() {
-    partFilters = { query: "", positions: "", rows: "" };
+    partFilters = { query: "" };
   }
 
   function selectCategory(slug: string) {
@@ -354,7 +412,7 @@
     selectedSeries = null;
     selectedPart = null;
     partResults = [];
-    partFilters = { query: "", positions: "", rows: "" };
+    partFilters = { query: "" };
     hasSearchedParts = false;
     partErrorMessage = "";
     searchSeries();
@@ -382,7 +440,7 @@
 
       reportSuccess = "Thanks — your report was sent.";
       reportForm = {
-        connectorName: "",
+        productName: "",
         context: "",
         details: "",
         email: ""
@@ -410,8 +468,8 @@
         <input
           class="hero-search"
           type="text"
-          placeholder="Search ESCs, motors, batteries or paste a part number"
-          aria-label="Search ESCs, motors, batteries or paste a part number"
+          placeholder="Search ESCs, motors, batteries or paste a model number"
+          aria-label="Search ESCs, motors, batteries or paste a model number"
         />
       </div>
       <div class="category-grid">
@@ -481,7 +539,7 @@
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1</p>
               <h2 class="text-lg font-semibold text-slate-900">Browse components by family</h2>
-              <p class="text-sm text-slate-700">Filter down ESC, battery, and brushless motor families, then drill into parts.</p>
+              <p class="text-sm text-slate-700">Filter down ESC, battery, and brushless motor families, then drill into variants.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button class="ghost-button" type="button" on:click={toggleTheme}>
@@ -493,7 +551,7 @@
                   type="button"
                   on:click={clearSeriesSelection}
                 >
-                  Change series
+                  Change family
                 </button>
               {/if}
             </div>
@@ -521,17 +579,17 @@
                     <span class="text-sm text-slate-600">· {selectedSeries.manufacturer}</span>
                   {/if}
                 </div>
-                {#if selectedSeries.connectionType}
-                  <p class="text-sm text-slate-700">{selectedSeries.connectionType}</p>
+                {#if selectedSeries.productType}
+                  <p class="text-sm text-slate-700">{selectedSeries.productType}</p>
                 {/if}
-                <p class="text-xs text-slate-500">Now search for the specific part within this family.</p>
+                <p class="text-xs text-slate-500">Now search for the specific variant within this family.</p>
               </div>
             </div>
           {:else}
             <div class="filters space-y-6 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
               <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <span class="text-sm font-semibold text-slate-800">Connection type</span>
+                  <span class="text-sm font-semibold text-slate-800">Component type</span>
                   <div class="space-y-2">
                     {#each connectionTypes as type}
                       <label class="flex items-center gap-2 text-sm text-slate-800">
@@ -545,7 +603,7 @@
                       </label>
                     {/each}
                   </div>
-                  <p class="text-xs text-slate-500">Click to select any mating styles you want to include.</p>
+                  <p class="text-xs text-slate-500">Focus on motor, ESC, or battery families.</p>
                 </label>
 
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -567,63 +625,35 @@
                 </label>
               </div>
 
-              <div class="grid gap-4 md:grid-cols-2" aria-label="Environmental filters">
+              <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4" aria-label="Electrical performance ranges">
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <span class="text-sm font-semibold text-slate-800">Waterproof</span>
-                  <select
-                    class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                    bind:value={seriesFilters.waterproof}
-                  >
-                    <option value="">Waterproof?</option>
-                    <option value="1">Yes</option>
-                    <option value="0">No</option>
-                  </select>
-                  <p class="text-xs text-slate-500">Surface sealed, IP-rated families for outdoor or harsh environments.</p>
-                </label>
-
-                <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <span class="text-sm font-semibold text-slate-800">Panel mount</span>
-                  <select
-                    class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                    bind:value={seriesFilters.panel}
-                  >
-                    <option value="">Panel Mount?</option>
-                    <option value="1">Yes</option>
-                    <option value="0">No</option>
-                  </select>
-                  <p class="text-xs text-slate-500">Limit to components with mounting hardware for front or rear panels.</p>
-                </label>
-              </div>
-
-              <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4" aria-label="Electrical and contact ranges">
-                <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <span class="text-sm font-semibold text-slate-800">Minimum contacts</span>
+                  <span class="text-sm font-semibold text-slate-800">Minimum power (W)</span>
                   <input
                     class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
                     type="number"
                     min="0"
-                    placeholder="Min contacts"
-                    bind:value={seriesFilters.minContacts}
+                    placeholder="Min power (W)"
+                    bind:value={seriesFilters.minPower}
                     on:input={(event) =>
-                      setSeriesNumberFilter("minContacts", (event.currentTarget as HTMLInputElement).value)
+                      setSeriesNumberFilter("minPower", (event.currentTarget as HTMLInputElement).value)
                     }
                   />
-                  <p class="text-xs text-slate-500">Use min positions to match the smallest pole count you can support.</p>
+                  <p class="text-xs text-slate-500">Filter for the minimum output power your system needs.</p>
                 </label>
 
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <span class="text-sm font-semibold text-slate-800">Maximum contacts</span>
+                  <span class="text-sm font-semibold text-slate-800">Maximum power (W)</span>
                   <input
                     class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
                     type="number"
-                    min={seriesFilters.minContacts === "" ? 0 : seriesFilters.minContacts}
-                    placeholder="Max contacts"
-                    bind:value={seriesFilters.maxContacts}
+                    min={seriesFilters.minPower === "" ? 0 : seriesFilters.minPower}
+                    placeholder="Max power (W)"
+                    bind:value={seriesFilters.maxPower}
                     on:input={(event) =>
-                      setSeriesNumberFilter("maxContacts", (event.currentTarget as HTMLInputElement).value)
+                      setSeriesNumberFilter("maxPower", (event.currentTarget as HTMLInputElement).value)
                     }
                   />
-                  <p class="text-xs text-slate-500">Cap the position count to keep row/column layouts manageable.</p>
+                  <p class="text-xs text-slate-500">Cap the power range to stay within your thermal budget.</p>
                 </label>
 
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -638,7 +668,7 @@
                       setSeriesNumberFilter("current", (event.currentTarget as HTMLInputElement).value)
                     }
                   />
-                  <p class="text-xs text-slate-500">Enter the per-contact current you need to avoid undersized series.</p>
+                  <p class="text-xs text-slate-500">Enter the continuous current floor for ESCs and batteries.</p>
                 </label>
 
                 <label class="block space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -653,7 +683,7 @@
                       setSeriesNumberFilter("voltage", (event.currentTarget as HTMLInputElement).value)
                     }
                   />
-                  <p class="text-xs text-slate-500">Set the minimum voltage rating to screen out low-insulation options.</p>
+                  <p class="text-xs text-slate-500">Set the minimum supported voltage range for your pack.</p>
                 </label>
               </div>
 
@@ -719,29 +749,25 @@
                           type="button"
                           on:click={() => selectSeries(item)}
                         >
-                          Select this series
+                          Select this family
                         </button>
                       </div>
 
-                      {#if item.connectionType}
-                        <p class="text-sm text-slate-700">{item.connectionType}</p>
-                      {/if}
-
                       <div class="grid gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
-                        {#if item.pitch !== null && item.pitch !== undefined}
-                          <p>Pitch: {item.pitch} mm</p>
+                        {#if item.productType}
+                          <p>Type: {item.productType}</p>
                         {/if}
                         {#if item.maxCurrent !== null && item.maxCurrent !== undefined}
-                          <p>Up to {item.maxCurrent} A per contact</p>
+                          <p>Max current: {item.maxCurrent} A</p>
                         {/if}
                         {#if item.maxVoltage !== null && item.maxVoltage !== undefined}
-                          <p>Up to {item.maxVoltage} V</p>
+                          <p>Max voltage: {item.maxVoltage} V</p>
                         {/if}
-                        {#if item.waterproof !== null && item.waterproof !== undefined}
-                          <p>Waterproof: {item.waterproof ? "Yes" : "No"}</p>
+                        {#if item.maxPower !== null && item.maxPower !== undefined}
+                          <p>Max power: {item.maxPower} W</p>
                         {/if}
-                        {#if item.panelMount !== null && item.panelMount !== undefined}
-                          <p>Panel mount: {item.panelMount ? "Yes" : "No"}</p>
+                        {#if item.maxCapacityMah !== null && item.maxCapacityMah !== undefined}
+                          <p>Max capacity: {item.maxCapacityMah} mAh</p>
                         {/if}
                       </div>
 
@@ -788,10 +814,10 @@
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
                 <h2 class="text-lg font-semibold text-slate-900">
-                  Search parts in {selectedSeries.name}
+                  Search variants in {selectedSeries.name}
                 </h2>
                 <p class="text-sm text-slate-700">
-                  Look up the exact part number, then pick it to see supplier and CAD/ECAD links.
+                  Look up the exact model number, then pick it to see supplier and CAD/ECAD links.
                 </p>
               </div>
               <div class="flex gap-2">
@@ -803,7 +829,7 @@
                     searchParts();
                   }}
                 >
-                  Reset part filters
+                  Reset variant filters
                 </button>
                 <button
                   class="rounded bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
@@ -811,46 +837,20 @@
                   on:click={searchParts}
                   disabled={isSearchingParts}
                 >
-                  {isSearchingParts ? "Searching..." : "Search parts"}
+                  {isSearchingParts ? "Searching..." : "Search variants"}
                 </button>
               </div>
             </div>
 
-            <div class="grid gap-4 md:grid-cols-3">
+            <div class="grid gap-4 md:grid-cols-2">
               <label class="space-y-1">
-                <span class="text-sm font-semibold text-slate-800">Part number</span>
+                <span class="text-sm font-semibold text-slate-800">Model or variant</span>
                 <input
                   class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  placeholder="e.g. XH-2P header"
+                  placeholder="e.g. 2207-1950KV, XRotor 65A"
                   bind:value={partFilters.query}
                 />
-                <p class="text-xs text-slate-500">Partial matches work — type any part of the code.</p>
-              </label>
-              <label class="space-y-1">
-                <span class="text-sm font-semibold text-slate-800">Positions</span>
-                <input
-                  class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  type="number"
-                  min="0"
-                  placeholder="Contact count"
-                  bind:value={partFilters.positions}
-                  on:input={(event) =>
-                    setPartNumberFilter("positions", (event.currentTarget as HTMLInputElement).value)
-                  }
-                />
-                <p class="text-xs text-slate-500">Match the pin count for your mating pair.</p>
-              </label>
-              <label class="space-y-1">
-                <span class="text-sm font-semibold text-slate-800">Rows</span>
-                <input
-                  class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  type="number"
-                  min="0"
-                  placeholder="Rows"
-                  bind:value={partFilters.rows}
-                  on:input={(event) => setPartNumberFilter("rows", (event.currentTarget as HTMLInputElement).value)}
-                />
-                <p class="text-xs text-slate-500">Use rows to narrow single vs dual-row variants.</p>
+                <p class="text-xs text-slate-500">Search model numbers, variant names, or SKUs.</p>
               </label>
             </div>
 
@@ -860,9 +860,9 @@
               {/if}
 
               {#if hasSearchedParts && partResults.length === 0 && !partErrorMessage}
-                <p class="text-sm text-slate-600">No parts found in this series with those filters.</p>
+                <p class="text-sm text-slate-600">No variants found in this series with those filters.</p>
               {:else if partResults.length === 0 && !partErrorMessage}
-                <p class="text-sm text-slate-600">Search to see individual part numbers.</p>
+                <p class="text-sm text-slate-600">Search to see individual variants.</p>
               {/if}
 
               {#each partResults as part}
@@ -872,7 +872,7 @@
                       <img
                         class="h-full w-full object-contain"
                         src={part.imageUrl || selectedSeries.imageUrl || fallbackImage}
-                        alt={part.partNumber}
+                        alt={part.modelNumber || part.variantName || "Product variant"}
                         on:error={(event) => {
                           const target = event.target;
                           if (target instanceof HTMLImageElement && target.src !== location.origin + fallbackImage) {
@@ -884,15 +884,27 @@
 
                     <div class="flex-1 space-y-2">
                       <div class="flex flex-wrap items-center gap-2">
-                        <h3 class="text-lg font-semibold text-slate-900">{part.partNumber || "Unnamed part"}</h3>
-                        {#if part.positions !== null && part.positions !== undefined}
+                        <h3 class="text-lg font-semibold text-slate-900">
+                          {part.modelNumber || part.variantName || "Unnamed variant"}
+                        </h3>
+                        {#if part.nominalVoltage !== null && part.nominalVoltage !== undefined}
                           <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                            {part.positions} positions
+                            {part.nominalVoltage} V nominal
                           </span>
                         {/if}
-                        {#if part.rows !== null && part.rows !== undefined}
+                        {#if part.maxCurrent !== null && part.maxCurrent !== undefined}
                           <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                            {part.rows} rows
+                            {part.maxCurrent} A
+                          </span>
+                        {/if}
+                        {#if part.maxPower !== null && part.maxPower !== undefined}
+                          <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                            {part.maxPower} W
+                          </span>
+                        {/if}
+                        {#if part.capacityMah !== null && part.capacityMah !== undefined}
+                          <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                            {part.capacityMah} mAh
                           </span>
                         {/if}
                         <button
@@ -900,13 +912,28 @@
                           type="button"
                           on:click={() => selectPart(part)}
                         >
-                          {selectedPart?.id === part.id ? "Selected" : "Use this part"}
+                          {selectedPart?.id === part.id ? "Selected" : "Use this variant"}
                         </button>
                       </div>
 
                       <div class="grid gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
-                        {#if part.pitch !== null && part.pitch !== undefined}
-                          <p>Pitch: {part.pitch} mm</p>
+                        {#if part.variantName}
+                          <p>Variant: {part.variantName}</p>
+                        {/if}
+                        {#if part.sku}
+                          <p>SKU: {part.sku}</p>
+                        {/if}
+                        {#if part.weightGrams !== null && part.weightGrams !== undefined}
+                          <p>Weight: {part.weightGrams} g</p>
+                        {/if}
+                        {#if part.motorSpecs?.kvRating !== null && part.motorSpecs?.kvRating !== undefined}
+                          <p>Kv: {part.motorSpecs?.kvRating}</p>
+                        {/if}
+                        {#if part.escSpecs?.continuousCurrent !== null && part.escSpecs?.continuousCurrent !== undefined}
+                          <p>Continuous current: {part.escSpecs?.continuousCurrent} A</p>
+                        {/if}
+                        {#if part.batterySpecs?.chemistry}
+                          <p>Chemistry: {part.batterySpecs?.chemistry}</p>
                         {/if}
                         {#if part.datasheetUrl}
                           <a
@@ -964,8 +991,8 @@
                 <p class="text-xs font-semibold uppercase tracking-wide text-emerald-200">Step 3</p>
                 <h2 class="text-lg font-semibold">Supplier links & downloads</h2>
                 <p class="text-sm text-slate-200">
-                  You picked {selectedPart.partNumber || "this part"} from {selectedSeries?.name}. Grab a CAD/ECAD
-                  package or jump to a supplier.
+                  You picked {selectedPart.modelNumber || selectedPart.variantName || "this variant"} from {selectedSeries?.name}.
+                  Grab a CAD/ECAD package or jump to a supplier.
                 </p>
               </div>
               <button
@@ -973,13 +1000,94 @@
                 type="button"
                 on:click={() => (selectedPart = null)}
               >
-                Pick a different part
+                Pick a different variant
               </button>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-2 rounded-lg bg-white/5 p-4">
-                <p class="text-sm font-semibold text-white">Buy this part</p>
+                <p class="text-sm font-semibold text-white">Engineering specs</p>
+                <div class="grid gap-2 text-xs text-slate-200">
+                  {#if selectedPart.nominalVoltage !== null && selectedPart.nominalVoltage !== undefined}
+                    <p>Nominal voltage: {selectedPart.nominalVoltage} V</p>
+                  {/if}
+                  {#if selectedPart.maxVoltage !== null && selectedPart.maxVoltage !== undefined}
+                    <p>Max voltage: {selectedPart.maxVoltage} V</p>
+                  {/if}
+                  {#if selectedPart.maxCurrent !== null && selectedPart.maxCurrent !== undefined}
+                    <p>Max current: {selectedPart.maxCurrent} A</p>
+                  {/if}
+                  {#if selectedPart.maxPower !== null && selectedPart.maxPower !== undefined}
+                    <p>Max power: {selectedPart.maxPower} W</p>
+                  {/if}
+                  {#if selectedPart.capacityMah !== null && selectedPart.capacityMah !== undefined}
+                    <p>Capacity: {selectedPart.capacityMah} mAh</p>
+                  {/if}
+                  {#if selectedPart.motorSpecs?.kvRating !== null && selectedPart.motorSpecs?.kvRating !== undefined}
+                    <p>Kv rating: {selectedPart.motorSpecs?.kvRating}</p>
+                  {/if}
+                  {#if selectedPart.motorSpecs?.poleCount !== null && selectedPart.motorSpecs?.poleCount !== undefined}
+                    <p>Pole count: {selectedPart.motorSpecs?.poleCount}</p>
+                  {/if}
+                  {#if selectedPart.escSpecs?.continuousCurrent !== null && selectedPart.escSpecs?.continuousCurrent !== undefined}
+                    <p>ESC continuous current: {selectedPart.escSpecs?.continuousCurrent} A</p>
+                  {/if}
+                  {#if selectedPart.escSpecs?.burstCurrent !== null && selectedPart.escSpecs?.burstCurrent !== undefined}
+                    <p>ESC burst current: {selectedPart.escSpecs?.burstCurrent} A</p>
+                  {/if}
+                  {#if selectedPart.escSpecs?.protocols}
+                    <p>ESC protocols: {selectedPart.escSpecs?.protocols}</p>
+                  {/if}
+                  {#if selectedPart.batterySpecs?.chemistry}
+                    <p>Battery chemistry: {selectedPart.batterySpecs?.chemistry}</p>
+                  {/if}
+                  {#if selectedPart.batterySpecs?.cellCount !== null && selectedPart.batterySpecs?.cellCount !== undefined}
+                    <p>Cell count: {selectedPart.batterySpecs?.cellCount}S</p>
+                  {/if}
+                  {#if selectedPart.batterySpecs?.dischargeRateC !== null && selectedPart.batterySpecs?.dischargeRateC !== undefined}
+                    <p>Discharge rate: {selectedPart.batterySpecs?.dischargeRateC}C</p>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="space-y-2 rounded-lg bg-white/5 p-4">
+                <p class="text-sm font-semibold text-white">Physical profile</p>
+                <div class="grid gap-2 text-xs text-slate-200">
+                  {#if selectedPart.length !== null && selectedPart.length !== undefined}
+                    <p>Length: {selectedPart.length} mm</p>
+                  {:else if selectedPart.escSpecs?.length !== null && selectedPart.escSpecs?.length !== undefined}
+                    <p>Length: {selectedPart.escSpecs?.length} mm</p>
+                  {:else if selectedPart.batterySpecs?.length !== null && selectedPart.batterySpecs?.length !== undefined}
+                    <p>Length: {selectedPart.batterySpecs?.length} mm</p>
+                  {/if}
+                  {#if selectedPart.width !== null && selectedPart.width !== undefined}
+                    <p>Width: {selectedPart.width} mm</p>
+                  {:else if selectedPart.escSpecs?.width !== null && selectedPart.escSpecs?.width !== undefined}
+                    <p>Width: {selectedPart.escSpecs?.width} mm</p>
+                  {:else if selectedPart.batterySpecs?.width !== null && selectedPart.batterySpecs?.width !== undefined}
+                    <p>Width: {selectedPart.batterySpecs?.width} mm</p>
+                  {/if}
+                  {#if selectedPart.height !== null && selectedPart.height !== undefined}
+                    <p>Height: {selectedPart.height} mm</p>
+                  {:else if selectedPart.escSpecs?.height !== null && selectedPart.escSpecs?.height !== undefined}
+                    <p>Height: {selectedPart.escSpecs?.height} mm</p>
+                  {:else if selectedPart.batterySpecs?.height !== null && selectedPart.batterySpecs?.height !== undefined}
+                    <p>Height: {selectedPart.batterySpecs?.height} mm</p>
+                  {/if}
+                  {#if selectedPart.weightGrams !== null && selectedPart.weightGrams !== undefined}
+                    <p>Weight: {selectedPart.weightGrams} g</p>
+                  {:else if selectedPart.escSpecs?.weightGrams !== null && selectedPart.escSpecs?.weightGrams !== undefined}
+                    <p>Weight: {selectedPart.escSpecs?.weightGrams} g</p>
+                  {:else if selectedPart.batterySpecs?.weightGrams !== null && selectedPart.batterySpecs?.weightGrams !== undefined}
+                    <p>Weight: {selectedPart.batterySpecs?.weightGrams} g</p>
+                  {/if}
+                </div>
+              </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="space-y-2 rounded-lg bg-white/5 p-4">
+                <p class="text-sm font-semibold text-white">Buy this variant</p>
                 {#if selectedPart.purchaseLinks && selectedPart.purchaseLinks.length}
                   <div class="flex flex-wrap gap-2">
                     {#each selectedPart.purchaseLinks as link}
@@ -994,7 +1102,7 @@
                     {/each}
                   </div>
                 {:else}
-                  <p class="text-xs text-slate-200">No distributor links yet — try a different part or series.</p>
+                  <p class="text-xs text-slate-200">No distributor links yet — try a different variant or series.</p>
                 {/if}
               </div>
 
@@ -1022,7 +1130,7 @@
                     </a>
                   {/if}
                   {#if !selectedPart.cadUrl && !selectedPart.ecadUrl}
-                    <p class="text-xs text-slate-200">No CAD/ECAD links yet for this part.</p>
+                    <p class="text-xs text-slate-200">No CAD/ECAD links yet for this variant.</p>
                   {/if}
                 </div>
               </div>
@@ -1055,11 +1163,11 @@
             <form class="space-y-3 rounded-lg bg-white p-4 shadow-sm" on:submit|preventDefault={submitReport}>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="block space-y-1">
-                  <span class="text-sm font-semibold text-slate-800">Component series or part</span>
+                  <span class="text-sm font-semibold text-slate-800">Component series or variant</span>
                   <input
                     class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="e.g. 2306 brushless motor"
-                    bind:value={reportForm.connectorName}
+                    bind:value={reportForm.productName}
                   />
                   <p class="text-xs text-slate-500">Optional but helps us find the record fast.</p>
                 </label>
@@ -1071,7 +1179,7 @@
                     placeholder="Filters you used, link, or page section"
                     bind:value={reportForm.context}
                   />
-                  <p class="text-xs text-slate-500">Filters, part numbers, or any other context.</p>
+                  <p class="text-xs text-slate-500">Filters, model numbers, or any other context.</p>
                 </label>
               </div>
 
@@ -1118,7 +1226,7 @@
                   class="rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
                   type="button"
                   on:click={() => {
-                    reportForm = { connectorName: "", context: "", details: "", email: "" };
+                    reportForm = { productName: "", context: "", details: "", email: "" };
                     reportError = "";
                     reportSuccess = "";
                   }}
