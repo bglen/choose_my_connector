@@ -7,7 +7,7 @@
 // - reported database issues
 
 import { sql } from "drizzle-orm";
-import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // -----------------------------
 // Product Series (Families)
@@ -215,6 +215,45 @@ export const issueReports = sqliteTable("issue_reports", {
 });
 
 // -----------------------------
+// Accounts + Sessions
+// -----------------------------
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    email: text("email").notNull(),
+    displayName: text("display_name"),
+    avatarUrl: text("avatar_url"),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    lastLoginAt: integer("last_login_at", { mode: "timestamp" })
+  },
+  (table) => ({
+    emailUnique: uniqueIndex("accounts_email_unique").on(table.email)
+  })
+);
+
+export const accountSessions = sqliteTable(
+  "account_sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull()
+  },
+  (table) => ({
+    tokenHashUnique: uniqueIndex("account_sessions_token_hash_unique").on(table.tokenHash)
+  })
+);
 // Product Categories: ESCs, Batteries, Motors
 // -----------------------------
 
