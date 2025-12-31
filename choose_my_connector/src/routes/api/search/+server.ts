@@ -1,7 +1,7 @@
 import { DISTRIBUTORS, distributorSlugToLabel } from "$lib/constants/distributors";
 import { db } from "$lib/db";
-import { connectorSeries, seriesDistributorLinks } from "$lib/drizzle/schema";
-import { and, asc, eq, exists, gte, inArray, like, or, sql } from "drizzle-orm";
+import { productSeries, seriesPurchaseLinks } from "$lib/drizzle/schema";
+import { and, asc, eq, exists, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 
 function parseNumberParam(value: string | null) {
     if (value === null || value === "") return null;
@@ -32,35 +32,35 @@ export async function GET({ url }) {
         .filter(Boolean);
 
     const filters = {
-        waterproof: parseNumberParam(url.searchParams.get("waterproof")),
-        panel: parseNumberParam(url.searchParams.get("panel")),
         current: parseNumberParam(url.searchParams.get("current")),
-        voltage: parseNumberParam(url.searchParams.get("voltage"))
+        voltage: parseNumberParam(url.searchParams.get("voltage")),
+        minPower: parseNumberParam(url.searchParams.get("minPower")),
+        maxPower: parseNumberParam(url.searchParams.get("maxPower"))
     };
 
     const where = [];
 
     if (typeFilters.length) {
         const typeClauses = typeFilters.map((type) =>
-            like(sql`lower(${connectorSeries.connectionType})`, `%${type}%`)
+            like(sql`lower(${productSeries.productType})`, `%${type}%`)
         );
         where.push(or(...typeClauses));
     }
 
-    if (filters.waterproof !== null) where.push(eq(connectorSeries.waterproof, filters.waterproof));
-    if (filters.panel !== null) where.push(eq(connectorSeries.panelMount, filters.panel));
-    if (filters.current !== null) where.push(gte(connectorSeries.maxCurrent, filters.current));
-    if (filters.voltage !== null) where.push(gte(connectorSeries.maxVoltage, filters.voltage));
+    if (filters.current !== null) where.push(gte(productSeries.maxCurrent, filters.current));
+    if (filters.voltage !== null) where.push(gte(productSeries.maxVoltage, filters.voltage));
+    if (filters.minPower !== null) where.push(gte(productSeries.maxPower, filters.minPower));
+    if (filters.maxPower !== null) where.push(lte(productSeries.maxPower, filters.maxPower));
     if (distributorFilters.length) {
         where.push(
             exists(
                 db
-                    .select({ id: seriesDistributorLinks.seriesId })
-                    .from(seriesDistributorLinks)
+                    .select({ id: seriesPurchaseLinks.seriesId })
+                    .from(seriesPurchaseLinks)
                     .where(
                         and(
-                            eq(seriesDistributorLinks.seriesId, connectorSeries.id),
-                            inArray(seriesDistributorLinks.distributor, distributorFilters)
+                            eq(seriesPurchaseLinks.seriesId, productSeries.id),
+                            inArray(seriesPurchaseLinks.distributor, distributorFilters)
                         )
                     )
             )
@@ -69,30 +69,32 @@ export async function GET({ url }) {
 
     const results = await db
         .select({
-            id: connectorSeries.id,
-            name: connectorSeries.name,
-            manufacturer: connectorSeries.manufacturer,
-            connectionType: connectorSeries.connectionType,
-            waterproof: connectorSeries.waterproof,
-            panelMount: connectorSeries.panelMount,
-            pitch: connectorSeries.pitch,
-            maxCurrent: connectorSeries.maxCurrent,
-            maxVoltage: connectorSeries.maxVoltage,
-            datasheetUrl: connectorSeries.seriesDatasheetUrl,
-            imageUrl: connectorSeries.seriesImageUrl,
-            notes: connectorSeries.notes,
+            id: productSeries.id,
+            name: productSeries.name,
+            manufacturer: productSeries.manufacturer,
+            productType: productSeries.productType,
+            minVoltage: productSeries.minVoltage,
+            maxVoltage: productSeries.maxVoltage,
+            maxCurrent: productSeries.maxCurrent,
+            maxPower: productSeries.maxPower,
+            minCapacityMah: productSeries.minCapacityMah,
+            maxCapacityMah: productSeries.maxCapacityMah,
+            datasheetUrl: productSeries.seriesDatasheetUrl,
+            cadUrl: productSeries.seriesCadUrl,
+            imageUrl: productSeries.seriesImageUrl,
+            notes: productSeries.notes,
             distributorLinks: sql<string>`json_group_array(
                 CASE
-                    WHEN ${seriesDistributorLinks.purchaseUrl} IS NOT NULL THEN
-                        json_object('distributor', ${seriesDistributorLinks.distributor}, 'purchaseUrl', ${seriesDistributorLinks.purchaseUrl})
+                    WHEN ${seriesPurchaseLinks.purchaseUrl} IS NOT NULL THEN
+                        json_object('distributor', ${seriesPurchaseLinks.distributor}, 'purchaseUrl', ${seriesPurchaseLinks.purchaseUrl})
                 END
             )`.as("distributorLinks")
         })
-        .from(connectorSeries)
-        .leftJoin(seriesDistributorLinks, eq(seriesDistributorLinks.seriesId, connectorSeries.id))
+        .from(productSeries)
+        .leftJoin(seriesPurchaseLinks, eq(seriesPurchaseLinks.seriesId, productSeries.id))
         .where(where.length ? and(...where) : undefined)
-        .groupBy(connectorSeries.id)
-        .orderBy(asc(connectorSeries.manufacturer), asc(connectorSeries.name));
+        .groupBy(productSeries.id)
+        .orderBy(asc(productSeries.manufacturer), asc(productSeries.name));
 
     const response = results.map((row) => {
         const parsedLinks = row.distributorLinks
