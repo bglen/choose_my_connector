@@ -11,7 +11,7 @@ function parseNumberParam(value: string | null) {
 }
 
 function sanitizeType(value: string) {
-    return value.replace(/[%_]/g, "").trim().toLowerCase();
+    return value.replace(/%/g, "").trim().toLowerCase();
 }
 
 export async function GET({ url }) {
