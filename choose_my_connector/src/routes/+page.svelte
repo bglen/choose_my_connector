@@ -184,7 +184,22 @@
   let showLogin = false;
   let loginError = "";
   let loginForm = { email: "", password: "" };
+  let showCreateAccount = false;
+  let createError = "";
+  let createForm = { email: "", password: "", displayName: "", avatarUrl: "", isAdmin: false };
+  let isAuthLoading = false;
+  let avatarFailed = false;
   let theme: "light" | "dark" = "dark";
+
+  type SessionAccount = {
+    id: number;
+    email: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+    isAdmin: boolean;
+  };
+
+  let sessionAccount: SessionAccount | null = null;
 
   const toNumber = (value: string | number | null) => {
     const num = Number(value);
@@ -237,6 +252,13 @@
 
     const saved = localStorage.getItem("cmc-theme") as "light" | "dark" | null;
     applyTheme(saved ?? "dark");
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("login") === "1") {
+      showLogin = true;
+    }
+
+    fetchSession();
   });
 
   function scrollToSearch() {
@@ -246,9 +268,47 @@
   function toggleLoginModal() {
     showLogin = !showLogin;
     loginError = "";
+    if (showLogin) {
+      showCreateAccount = false;
+    }
   }
 
-  function submitLogin() {
+  function toggleCreateAccountModal() {
+    showCreateAccount = !showCreateAccount;
+    createError = "";
+    if (showCreateAccount) {
+      showLogin = false;
+    }
+  }
+
+  function getInitials(account: SessionAccount) {
+    const source = account.displayName?.trim() || account.email;
+    const parts = source.split(/[.\s@_-]+/).filter(Boolean);
+    const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
+    return initials.join("") || "A";
+  }
+
+  async function fetchSession() {
+    isAuthLoading = true;
+    try {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) {
+        sessionAccount = null;
+        return;
+      }
+
+      const data = await res.json();
+      sessionAccount = data.account ?? null;
+      avatarFailed = false;
+    } catch (error) {
+      console.error("Session check failed", error);
+      sessionAccount = null;
+    } finally {
+      isAuthLoading = false;
+    }
+  }
+
+  async function submitLogin() {
     loginError = "";
     const trimmedEmail = loginForm.email.trim();
     const trimmedPassword = loginForm.password.trim();
@@ -258,9 +318,78 @@
       return;
     }
 
-    // Placeholder auth handler until backend is wired.
-    alert("Admin login placeholder — wire to auth backend.");
-    showLogin = false;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        loginError = data.error || "Login failed.";
+        return;
+      }
+
+      sessionAccount = data.account ?? null;
+      avatarFailed = false;
+      showLogin = false;
+      loginForm = { email: "", password: "" };
+    } catch (error) {
+      console.error("Login error", error);
+      loginError = "Unable to reach the login service.";
+    }
+  }
+
+  async function submitCreateAccount() {
+    createError = "";
+    const trimmedEmail = createForm.email.trim();
+    const trimmedPassword = createForm.password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      createError = "Email and password are required.";
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: trimmedPassword,
+          displayName: createForm.displayName.trim(),
+          avatarUrl: createForm.avatarUrl.trim(),
+          isAdmin: createForm.isAdmin
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        createError = data.error || "Could not create account.";
+        return;
+      }
+
+      sessionAccount = data.account ?? null;
+      avatarFailed = false;
+      showCreateAccount = false;
+      createForm = { email: "", password: "", displayName: "", avatarUrl: "", isAdmin: false };
+    } catch (error) {
+      console.error("Account creation error", error);
+      createError = "Unable to reach the account service.";
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout failed", error);
+    } finally {
+      sessionAccount = null;
+    }
   }
 
   function buildSeriesSearchParams() {
@@ -459,6 +588,54 @@
   <div class="page-glow page-glow--right"></div>
 
   <div class="page-container">
+    <header class="top-bar">
+      <div class="brand">
+        <div class="brand-icon">P</div>
+        <div>
+          <p class="brand-title">Parametric</p>
+          <p class="brand-subtitle">Engineering-grade powertrain components</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        {#if sessionAccount}
+          <div class="account-chip">
+            <div class="account-avatar" aria-hidden="true">
+              {#if sessionAccount.avatarUrl && !avatarFailed}
+                <img
+                  alt={`${sessionAccount.displayName ?? sessionAccount.email} profile`}
+                  src={sessionAccount.avatarUrl}
+                  on:error={() => {
+                    avatarFailed = true;
+                  }}
+                />
+              {:else}
+                <span>{getInitials(sessionAccount)}</span>
+              {/if}
+            </div>
+            <div class="account-meta">
+              <p class="account-name">{sessionAccount.displayName ?? sessionAccount.email}</p>
+              {#if sessionAccount.isAdmin}
+                <span class="admin-badge">Admin</span>
+              {:else}
+                <span class="account-email">{sessionAccount.email}</span>
+              {/if}
+            </div>
+          </div>
+          {#if sessionAccount.isAdmin}
+            <a class="secondary-button" href="/admin">Admin dashboard</a>
+          {/if}
+          <button class="ghost-button" type="button" on:click={logout}>Log out</button>
+        {:else}
+          <button class="ghost-button" type="button" on:click={toggleLoginModal} disabled={isAuthLoading}>
+            Log in
+          </button>
+          <button class="primary-button" type="button" on:click={toggleCreateAccountModal} disabled={isAuthLoading}>
+            Create account
+          </button>
+        {/if}
+      </div>
+    </header>
+
     <section class="hero-panel">
       <h1 class="hero-title">Parametric — engineering-grade powertrain components.</h1>
       <p class="lede">
@@ -493,14 +670,14 @@
         </a>
       </div>
 
-      {#if showLogin}
-        <div class="modal-backdrop" role="presentation" on:click={toggleLoginModal}></div>
-        <div class="modal" role="dialog" aria-modal="true" aria-label="Admin login">
-          <div class="modal-header">
-            <h3>Admin login</h3>
-            <button class="ghost-button" type="button" on:click={toggleLoginModal}>Close</button>
-          </div>
-          <div class="modal-body">
+    {#if showLogin}
+      <div class="modal-backdrop" role="presentation" on:click={toggleLoginModal}></div>
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Account login">
+        <div class="modal-header">
+          <h3>Log in</h3>
+          <button class="ghost-button" type="button" on:click={toggleLoginModal}>Close</button>
+        </div>
+        <div class="modal-body">
             <label class="block space-y-1">
               <span class="text-sm font-semibold text-slate-800">Email</span>
               <input
@@ -527,9 +704,69 @@
             <button class="primary-button" type="button" on:click={submitLogin}>Log in</button>
             <button class="secondary-button" type="button" on:click={toggleLoginModal}>Cancel</button>
           </div>
-          <p class="modal-note">Placeholder login — wire to your auth backend.</p>
+        <p class="modal-note">Use your account email and password.</p>
+      </div>
+    {/if}
+
+    {#if showCreateAccount}
+      <div class="modal-backdrop" role="presentation" on:click={toggleCreateAccountModal}></div>
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Create account">
+        <div class="modal-header">
+          <h3>Create account</h3>
+          <button class="ghost-button" type="button" on:click={toggleCreateAccountModal}>Close</button>
         </div>
-      {/if}
+        <div class="modal-body">
+          <label class="block space-y-1">
+            <span class="text-sm font-semibold text-slate-800">Email</span>
+            <input
+              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              type="email"
+              placeholder="you@example.com"
+              bind:value={createForm.email}
+            />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-sm font-semibold text-slate-800">Display name</span>
+            <input
+              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              type="text"
+              placeholder="Jamie Lee"
+              bind:value={createForm.displayName}
+            />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-sm font-semibold text-slate-800">Profile photo URL</span>
+            <input
+              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              type="url"
+              placeholder="https://..."
+              bind:value={createForm.avatarUrl}
+            />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-sm font-semibold text-slate-800">Password</span>
+            <input
+              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              type="password"
+              placeholder="At least 8 characters"
+              bind:value={createForm.password}
+            />
+          </label>
+          <label class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <input type="checkbox" bind:checked={createForm.isAdmin} />
+            Create as admin (dev-only)
+          </label>
+          {#if createError}
+            <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button class="primary-button" type="button" on:click={submitCreateAccount}>Create account</button>
+          <button class="secondary-button" type="button" on:click={toggleCreateAccountModal}>Cancel</button>
+        </div>
+        <p class="modal-note">No email verification for now.</p>
+      </div>
+    {/if}
     </section>
 
     <section class="stack" id="search" bind:this={searchSection}>
@@ -1247,7 +1484,11 @@
         <button class="ghost-button" type="button" on:click={() => (showReportForm = true)}>
           Report an issue
         </button>
-        <button class="ghost-button" type="button" on:click={toggleLoginModal}>Admin login</button>
+        {#if sessionAccount}
+          <button class="ghost-button" type="button" on:click={logout}>Log out</button>
+        {:else}
+          <button class="ghost-button" type="button" on:click={toggleLoginModal}>Log in</button>
+        {/if}
       </div>
     </footer>
   </div>
@@ -1344,6 +1585,63 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  .account-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 90%, transparent);
+  }
+
+  .account-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(79, 123, 191, 0.45), rgba(56, 189, 248, 0.4));
+    color: #0f172a;
+    font-weight: 700;
+  }
+
+  .account-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .account-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .account-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .account-email {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .admin-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #0f172a;
+    background: rgba(250, 204, 21, 0.5);
+    padding: 2px 6px;
+    border-radius: 999px;
   }
 
   .hero-panel {

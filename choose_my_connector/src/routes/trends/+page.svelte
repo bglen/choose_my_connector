@@ -393,7 +393,7 @@
       <p class="muted">Built for engineers who want fewer tabs and faster decisions.</p>
       <div class="footer-links">
         <a class="ghost-button" href="/#report">Report an issue</a>
-        <a class="ghost-button" href="/?login=1">Admin login</a>
+        <a class="ghost-button" href="/?login=1">Log in</a>
       </div>
     </footer>
   </div>
