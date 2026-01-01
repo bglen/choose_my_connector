@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { browser } from "$app/environment";
+  import { browser, dev } from "$app/environment";
   import { onMount } from "svelte";
   import { DISTRIBUTORS } from "$lib/constants/distributors";
 
@@ -217,7 +217,7 @@
   let loginForm = { email: "", password: "" };
   let showCreateAccount = false;
   let createError = "";
-  let createForm = { email: "", password: "", displayName: "", avatarUrl: "", isAdmin: false };
+  let createForm = { email: "", password: "", displayName: "", isAdmin: false };
   let isAuthLoading = false;
   let avatarFailed = false;
   let theme: "light" | "dark" = "dark";
@@ -231,10 +231,12 @@
   };
 
   let sessionAccount: SessionAccount | null = null;
+  let showAdminButton = dev;
   $: normalizedSeriesType = selectedSeries?.productType?.toLowerCase().replace(/_/g, " ") ?? "";
   $: isMotorSeries = normalizedSeriesType.includes("motor");
   $: isEscSeries = normalizedSeriesType.includes("esc");
   $: isBatterySeries = normalizedSeriesType.includes("battery");
+  $: showAdminButton = dev || !!sessionAccount?.isAdmin;
 
   const toNumber = (value: string | number | null) => {
     const num = Number(value);
@@ -415,7 +417,6 @@
           email: trimmedEmail,
           password: trimmedPassword,
           displayName: createForm.displayName.trim(),
-          avatarUrl: createForm.avatarUrl.trim(),
           isAdmin: createForm.isAdmin
         })
       });
@@ -430,7 +431,7 @@
       sessionAccount = data.account ?? null;
       avatarFailed = false;
       showCreateAccount = false;
-      createForm = { email: "", password: "", displayName: "", avatarUrl: "", isAdmin: false };
+      createForm = { email: "", password: "", displayName: "", isAdmin: false };
     } catch (error) {
       console.error("Account creation error", error);
       createError = "Unable to reach the account service.";
@@ -693,7 +694,7 @@
               {/if}
             </div>
           </div>
-          {#if sessionAccount.isAdmin}
+          {#if showAdminButton}
             <a class="secondary-button" href="/admin">Admin dashboard</a>
           {/if}
           <button class="ghost-button" type="button" on:click={logout}>Log out</button>
@@ -701,6 +702,9 @@
           <button class="ghost-button" type="button" on:click={toggleLoginModal} disabled={isAuthLoading}>
             Log in
           </button>
+          {#if showAdminButton}
+            <a class="secondary-button" href="/admin">Admin dashboard</a>
+          {/if}
           <button class="primary-button" type="button" on:click={toggleCreateAccountModal} disabled={isAuthLoading}>
             Create account
           </button>
@@ -804,15 +808,6 @@
               type="text"
               placeholder="Jamie Lee"
               bind:value={createForm.displayName}
-            />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-sm font-semibold text-slate-800">Profile photo URL</span>
-            <input
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              type="url"
-              placeholder="https://..."
-              bind:value={createForm.avatarUrl}
             />
           </label>
           <label class="block space-y-1">
