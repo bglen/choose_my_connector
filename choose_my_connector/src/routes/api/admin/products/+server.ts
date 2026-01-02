@@ -1,5 +1,5 @@
 import { db } from "$lib/db";
-import { batteryProducts, escProducts, motorProducts } from "$lib/drizzle/schema";
+import { batteryProducts, columnMetadata, escProducts, motorProducts } from "$lib/drizzle/schema";
 import { asc, eq } from "drizzle-orm";
 import { json } from "@sveltejs/kit";
 
@@ -15,6 +15,67 @@ const categoryMap = {
   battery: batteryProducts,
   motor: motorProducts
 } as const;
+
+const tableNameMap: Record<Category, string> = {
+  esc: "esc_products",
+  battery: "battery_products",
+  motor: "motor_products"
+};
+
+async function buildColumns(category: Category, rows: Record<string, unknown>[]) {
+  const tableName = tableNameMap[category];
+  try {
+    const meta = await db
+      .select()
+      .from(columnMetadata)
+      .where(eq(columnMetadata.tableName, tableName))
+      .orderBy(
+        asc(columnMetadata.displayOrder),
+        asc(columnMetadata.columnName)
+      );
+
+    if (meta.length) {
+      const sampleRow = rows[0] ?? {};
+      const rowKeys = Object.keys(sampleRow);
+
+      const toCamel = (value: string) =>
+        value
+          .split("_")
+          .map((segment, index) =>
+            index === 0 ? segment : segment.charAt(0).toUpperCase() + segment.slice(1)
+          )
+          .join("");
+
+      return meta.map((item) => {
+        const camelKey = toCamel(item.columnName);
+        const key = rowKeys.includes(item.columnName)
+          ? item.columnName
+          : rowKeys.includes(camelKey)
+            ? camelKey
+            : item.columnName;
+
+        return {
+          key,
+          label: item.label ?? item.columnName,
+          description: item.description ?? undefined,
+          type: item.inputType === "number" ? "number" : "text"
+        };
+      });
+    }
+  } catch (error) {
+    console.error("Failed to load column metadata", error);
+  }
+
+  const keys = rows.length ? Object.keys(rows[0]).filter((key) => key !== "id") : [];
+  return keys.map((key) => ({
+    key,
+    label: key,
+    type: typeof rows.find((row) => row[key] !== null && row[key] !== undefined && row[key] !== "")?.[key] ===
+    "number"
+      ? "number"
+      : "text"
+  }));
+}
 
 function getCategory(value: unknown): Category | null {
   if (value === "esc" || value === "battery" || value === "motor") return value;
@@ -46,7 +107,9 @@ export async function GET({ url }) {
     .from(table)
     .orderBy(asc(table.name));
 
-  return json(results);
+  const columns = await buildColumns(category, results as Record<string, unknown>[]);
+
+  return json({ rows: results, columns });
 }
 
 export async function POST({ request }) {

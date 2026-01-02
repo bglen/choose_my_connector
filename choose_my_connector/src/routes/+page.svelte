@@ -2,6 +2,10 @@
   import { browser, dev } from "$app/environment";
   import { onMount } from "svelte";
   import { DISTRIBUTORS } from "$lib/constants/distributors";
+  import SiteFooter from "$lib/components/SiteFooter.svelte";
+  import SiteHeader from "$lib/components/SiteHeader.svelte";
+  import type { SessionAccount } from "$lib/types/account";
+  export let data: { account: SessionAccount | null };
 
   type DistributorLink = { distributor: string; purchaseUrl: string };
   type SeriesResult = {
@@ -192,6 +196,7 @@
   let seriesErrorMessage = "";
   let isSearchingSeries = false;
   let searchSection: HTMLElement | null = null;
+  let heroSearchInput: HTMLInputElement | null = null;
 
   let selectedSeries: SeriesResult | null = null;
 
@@ -219,23 +224,22 @@
   let createError = "";
   let createForm = { email: "", password: "", displayName: "", isAdmin: false };
   let isAuthLoading = false;
-  let avatarFailed = false;
-  let theme: "light" | "dark" = "dark";
 
-  type SessionAccount = {
-    id: number;
-    email: string;
-    displayName: string | null;
-    avatarUrl: string | null;
-    isAdmin: boolean;
-  };
-
-  let sessionAccount: SessionAccount | null = null;
+  let sessionAccount: SessionAccount | null = data.account ?? null;
   let showAdminButton = dev;
-  $: normalizedSeriesType = selectedSeries?.productType?.toLowerCase().replace(/_/g, " ") ?? "";
-  $: isMotorSeries = normalizedSeriesType.includes("motor");
-  $: isEscSeries = normalizedSeriesType.includes("esc");
-  $: isBatterySeries = normalizedSeriesType.includes("battery");
+  function normalizeSeriesType(value: string | null | undefined) {
+    if (!value) return "";
+    const normalized = value.toLowerCase();
+    if (normalized.includes("esc") || normalized.includes("speed controller")) return "esc";
+    if (normalized.includes("motor")) return "brushless_motor";
+    if (normalized.includes("battery") || normalized.includes("pack") || normalized.includes("lipo")) return "battery";
+    return normalized.replace(/[^a-z0-9]+/g, "_");
+  }
+
+  $: seriesTypeSlug = normalizeSeriesType(selectedSeries?.productType);
+  $: isMotorSeries = seriesTypeSlug === "brushless_motor" || seriesTypeSlug.includes("motor");
+  $: isEscSeries = seriesTypeSlug === "esc" || seriesTypeSlug.includes("speed_controller");
+  $: isBatterySeries = seriesTypeSlug === "battery" || seriesTypeSlug.includes("battery");
   $: showAdminButton = dev || !!sessionAccount?.isAdmin;
 
   const toNumber = (value: string | number | null) => {
@@ -291,31 +295,17 @@
     partFilters = { ...partFilters, [key]: Math.max(0, numeric) };
   }
 
-  function applyTheme(nextTheme: "light" | "dark") {
-    theme = nextTheme;
-
-    if (browser) {
-      document.documentElement.dataset.theme = nextTheme;
-      localStorage.setItem("cmc-theme", nextTheme);
-    }
-  }
-
-  function toggleTheme() {
-    applyTheme(theme === "light" ? "dark" : "light");
-  }
-
   onMount(() => {
     if (!browser) return;
-
-    const saved = localStorage.getItem("cmc-theme") as "light" | "dark" | null;
-    applyTheme(saved ?? "dark");
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("login") === "1") {
       showLogin = true;
     }
 
-    fetchSession();
+    if (!sessionAccount) {
+      fetchSession();
+    }
   });
 
   function scrollToSearch() {
@@ -338,11 +328,11 @@
     }
   }
 
-  function getInitials(account: SessionAccount) {
-    const source = account.displayName?.trim() || account.email;
-    const parts = source.split(/[.\s@_-]+/).filter(Boolean);
-    const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
-    return initials.join("") || "A";
+  function switchToCreateAccount() {
+    loginError = "";
+    createError = "";
+    showLogin = false;
+    showCreateAccount = true;
   }
 
   async function fetchSession() {
@@ -356,7 +346,6 @@
 
       const data = await res.json();
       sessionAccount = data.account ?? null;
-      avatarFailed = false;
     } catch (error) {
       console.error("Session check failed", error);
       sessionAccount = null;
@@ -390,7 +379,6 @@
       }
 
       sessionAccount = data.account ?? null;
-      avatarFailed = false;
       showLogin = false;
       loginForm = { email: "", password: "" };
     } catch (error) {
@@ -429,7 +417,6 @@
       }
 
       sessionAccount = data.account ?? null;
-      avatarFailed = false;
       showCreateAccount = false;
       createForm = { email: "", password: "", displayName: "", isAdmin: false };
     } catch (error) {
@@ -475,6 +462,7 @@
     if (!selectedSeries?.id) return params;
 
     params.set("seriesId", String(selectedSeries.id));
+    if (selectedSeries.productType) params.set("productType", selectedSeries.productType);
 
     if (partFilters.query.trim()) params.set("q", partFilters.query.trim());
 
@@ -543,7 +531,7 @@
 
   async function searchParts() {
     if (!selectedSeries?.id) {
-      partErrorMessage = "Choose a component family first.";
+      partErrorMessage = "Choose a component first.";
       return;
     }
 
@@ -569,7 +557,7 @@
       }
     } catch (error) {
       console.error("Part search error", error);
-      partErrorMessage = "Unable to reach the variant search API.";
+      partErrorMessage = "Unable to reach the product search API.";
       partResults = [];
     } finally {
       isSearchingParts = false;
@@ -661,56 +649,13 @@
   <div class="page-glow page-glow--right"></div>
 
   <div class="page-container">
-    <header class="top-bar">
-      <div class="brand">
-        <div class="brand-icon">P</div>
-        <div>
-          <p class="brand-title">Parametric</p>
-          <p class="brand-subtitle">Engineering-grade powertrain components</p>
-        </div>
-      </div>
-      <div class="top-actions">
-        {#if sessionAccount}
-          <div class="account-chip">
-            <div class="account-avatar" aria-hidden="true">
-              {#if sessionAccount.avatarUrl && !avatarFailed}
-                <img
-                  alt={`${sessionAccount.displayName ?? sessionAccount.email} profile`}
-                  src={sessionAccount.avatarUrl}
-                  on:error={() => {
-                    avatarFailed = true;
-                  }}
-                />
-              {:else}
-                <span>{getInitials(sessionAccount)}</span>
-              {/if}
-            </div>
-            <div class="account-meta">
-              <p class="account-name">{sessionAccount.displayName ?? sessionAccount.email}</p>
-              {#if sessionAccount.isAdmin}
-                <span class="admin-badge">Admin</span>
-              {:else}
-                <span class="account-email">{sessionAccount.email}</span>
-              {/if}
-            </div>
-          </div>
-          {#if showAdminButton}
-            <a class="secondary-button" href="/admin">Admin dashboard</a>
-          {/if}
-          <button class="ghost-button" type="button" on:click={logout}>Log out</button>
-        {:else}
-          <button class="ghost-button" type="button" on:click={toggleLoginModal} disabled={isAuthLoading}>
-            Log in
-          </button>
-          {#if showAdminButton}
-            <a class="secondary-button" href="/admin">Admin dashboard</a>
-          {/if}
-          <button class="primary-button" type="button" on:click={toggleCreateAccountModal} disabled={isAuthLoading}>
-            Create account
-          </button>
-        {/if}
-      </div>
-    </header>
+    <SiteHeader
+      {sessionAccount}
+      {isAuthLoading}
+      {showAdminButton}
+      onLoginClick={toggleLoginModal}
+      onLogoutClick={logout}
+    />
 
     <section class="hero-panel">
       <h1 class="hero-title">Parametric — engineering-grade powertrain components.</h1>
@@ -723,6 +668,15 @@
           type="text"
           placeholder="Search ESCs, motors, batteries or paste a model number"
           aria-label="Search ESCs, motors, batteries or paste a model number"
+          bind:this={heroSearchInput}
+          on:keydown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              (event.currentTarget as HTMLInputElement).blur();
+              searchSeries();
+              scrollToSearch();
+            }
+          }}
         />
       </div>
       <div class="category-grid">
@@ -751,9 +705,9 @@
       <div class="modal" role="dialog" aria-modal="true" aria-label="Account login">
         <div class="modal-header">
           <h3>Log in</h3>
-          <button class="ghost-button" type="button" on:click={toggleLoginModal}>Close</button>
         </div>
-        <div class="modal-body">
+        <form on:submit|preventDefault={submitLogin}>
+          <div class="modal-body">
             <label class="block space-y-1">
               <span class="text-sm font-semibold text-slate-800">Email</span>
               <input
@@ -772,14 +726,15 @@
                 bind:value={loginForm.password}
               />
             </label>
-            {#if loginError}
-              <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{loginError}</p>
-            {/if}
-          </div>
+              {#if loginError}
+                <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{loginError}</p>
+              {/if}
+            </div>
           <div class="modal-footer">
-            <button class="primary-button" type="button" on:click={submitLogin}>Log in</button>
-            <button class="secondary-button" type="button" on:click={toggleLoginModal}>Cancel</button>
+            <button class="primary-button" type="submit">Log in</button>
           </div>
+          <button class="modal-link" type="button" on:click={switchToCreateAccount}>Create account</button>
+        </form>
         <p class="modal-note">Use your account email and password.</p>
       </div>
     {/if}
@@ -789,48 +744,48 @@
       <div class="modal" role="dialog" aria-modal="true" aria-label="Create account">
         <div class="modal-header">
           <h3>Create account</h3>
-          <button class="ghost-button" type="button" on:click={toggleCreateAccountModal}>Close</button>
         </div>
-        <div class="modal-body">
-          <label class="block space-y-1">
-            <span class="text-sm font-semibold text-slate-800">Email</span>
-            <input
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              type="email"
-              placeholder="you@example.com"
-              bind:value={createForm.email}
-            />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-sm font-semibold text-slate-800">Display name</span>
-            <input
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              type="text"
-              placeholder="Jamie Lee"
-              bind:value={createForm.displayName}
-            />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-sm font-semibold text-slate-800">Password</span>
-            <input
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              type="password"
-              placeholder="At least 8 characters"
-              bind:value={createForm.password}
-            />
-          </label>
-          <label class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <input type="checkbox" bind:checked={createForm.isAdmin} />
-            Create as admin (dev-only)
-          </label>
-          {#if createError}
-            <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
-          {/if}
-        </div>
-        <div class="modal-footer">
-          <button class="primary-button" type="button" on:click={submitCreateAccount}>Create account</button>
-          <button class="secondary-button" type="button" on:click={toggleCreateAccountModal}>Cancel</button>
-        </div>
+        <form on:submit|preventDefault={submitCreateAccount}>
+          <div class="modal-body">
+            <label class="block space-y-1">
+              <span class="text-sm font-semibold text-slate-800">Email</span>
+              <input
+                class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                type="email"
+                placeholder="you@example.com"
+                bind:value={createForm.email}
+              />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-sm font-semibold text-slate-800">Display name</span>
+              <input
+                class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                type="text"
+                placeholder="Jamie Lee"
+                bind:value={createForm.displayName}
+              />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-sm font-semibold text-slate-800">Password</span>
+              <input
+                class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                type="password"
+                placeholder="At least 8 characters"
+                bind:value={createForm.password}
+              />
+            </label>
+            <label class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <input type="checkbox" bind:checked={createForm.isAdmin} />
+              Create as admin (dev-only)
+            </label>
+            {#if createError}
+              <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
+            {/if}
+          </div>
+          <div class="modal-footer">
+            <button class="primary-button" type="submit">Create account</button>
+          </div>
+        </form>
         <p class="modal-note">No email verification for now.</p>
       </div>
     {/if}
@@ -842,20 +797,17 @@
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1</p>
-              <h2 class="text-lg font-semibold text-slate-900">Browse components by family</h2>
-              <p class="text-sm text-slate-700">Filter down ESC, battery, and brushless motor families, then drill into variants.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Browse components</h2>
+              <p class="text-sm text-slate-700">Filter ESCs, batteries, and brushless motors, then drill into detailed specs.</p>
             </div>
             <div class="flex flex-wrap gap-2">
-              <button class="ghost-button" type="button" on:click={toggleTheme}>
-                {theme === "light" ? "Dark mode" : "Light mode"}
-              </button>
               {#if selectedSeries}
                 <button
                   class="self-start rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
                   type="button"
                   on:click={clearSeriesSelection}
                 >
-                  Change family
+                  Change component
                 </button>
               {/if}
             </div>
@@ -886,7 +838,7 @@
                 {#if selectedSeries.productType}
                   <p class="text-sm text-slate-700">{selectedSeries.productType}</p>
                 {/if}
-                <p class="text-xs text-slate-500">Now search for the specific variant within this family.</p>
+                <p class="text-xs text-slate-500">Now view the detailed specs for this product.</p>
               </div>
             </div>
           {:else}
@@ -997,7 +949,7 @@
                   on:click={searchSeries}
                   disabled={isSearchingSeries}
                 >
-                  {isSearchingSeries ? "Searching..." : "Search series"}
+                  {isSearchingSeries ? "Searching..." : "Search"}
                 </button>
                 <button
                   class="rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
@@ -1053,7 +1005,7 @@
                           type="button"
                           on:click={() => selectSeries(item)}
                         >
-                          Select this family
+                          Select this product
                         </button>
                       </div>
 
@@ -1118,7 +1070,7 @@
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
                 <h2 class="text-lg font-semibold text-slate-900">
-                  Search variants in {selectedSeries.name}
+                  View specs for {selectedSeries.name}
                 </h2>
                 <p class="text-sm text-slate-700">
                   Look up the exact model number, then pick it to see supplier and CAD/ECAD links.
@@ -1133,7 +1085,7 @@
                     searchParts();
                   }}
                 >
-                  Reset variant filters
+                  Reset filters
                 </button>
                 <button
                   class="rounded bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
@@ -1141,20 +1093,20 @@
                   on:click={searchParts}
                   disabled={isSearchingParts}
                 >
-                  {isSearchingParts ? "Searching..." : "Search variants"}
+                  {isSearchingParts ? "Searching..." : "Search"}
                 </button>
               </div>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <label class="space-y-1">
-                <span class="text-sm font-semibold text-slate-800">Model or variant</span>
+                <span class="text-sm font-semibold text-slate-800">Model</span>
                 <input
                   class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
                   placeholder="e.g. 2207-1950KV, XRotor 65A"
                   bind:value={partFilters.query}
                 />
-                <p class="text-xs text-slate-500">Search model numbers, variant names, or SKUs.</p>
+                <p class="text-xs text-slate-500">Search model numbers, product names, or SKUs.</p>
               </label>
 
               {#if isMotorSeries}
@@ -1275,9 +1227,9 @@
               {/if}
 
               {#if hasSearchedParts && partResults.length === 0 && !partErrorMessage}
-                <p class="text-sm text-slate-600">No variants found in this series with those filters.</p>
+                <p class="text-sm text-slate-600">No products found with those filters.</p>
               {:else if partResults.length === 0 && !partErrorMessage}
-                <p class="text-sm text-slate-600">Search to see individual variants.</p>
+                <p class="text-sm text-slate-600">Search to see individual products.</p>
               {/if}
 
               {#each partResults as part}
@@ -1287,7 +1239,7 @@
                       <img
                         class="h-full w-full object-contain"
                         src={part.imageUrl || selectedSeries.imageUrl || fallbackImage}
-                        alt={part.modelNumber || part.variantName || "Product variant"}
+                        alt={part.modelNumber || part.variantName || "Product"}
                         on:error={(event) => {
                           const target = event.target;
                           if (target instanceof HTMLImageElement && target.src !== location.origin + fallbackImage) {
@@ -1300,7 +1252,7 @@
                     <div class="flex-1 space-y-2">
                       <div class="flex flex-wrap items-center gap-2">
                         <h3 class="text-lg font-semibold text-slate-900">
-                          {part.modelNumber || part.variantName || "Unnamed variant"}
+                          {part.modelNumber || part.variantName || "Unnamed product"}
                         </h3>
                         {#if part.nominalVoltage !== null && part.nominalVoltage !== undefined}
                           <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
@@ -1327,13 +1279,13 @@
                           type="button"
                           on:click={() => selectPart(part)}
                         >
-                          {selectedPart?.id === part.id ? "Selected" : "Use this variant"}
+                          {selectedPart?.id === part.id ? "Selected" : "Use this product"}
                         </button>
                       </div>
 
                       <div class="grid gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
                         {#if part.variantName}
-                          <p>Variant: {part.variantName}</p>
+                          <p>Name: {part.variantName}</p>
                         {/if}
                         {#if part.sku}
                           <p>SKU: {part.sku}</p>
@@ -1401,23 +1353,23 @@
 
         {#if selectedPart}
           <section class="panelized panelized-accent space-y-3 rounded-xl bg-slate-900 p-5 text-white shadow-md">
-            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-200">Step 3</p>
-                <h2 class="text-lg font-semibold">Supplier links & downloads</h2>
-                <p class="text-sm text-slate-200">
-                  You picked {selectedPart.modelNumber || selectedPart.variantName || "this variant"} from {selectedSeries?.name}.
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-emerald-200">Step 3</p>
+                  <h2 class="text-lg font-semibold">Supplier links & downloads</h2>
+                  <p class="text-sm text-slate-200">
+                  You picked {selectedPart.modelNumber || selectedPart.variantName || "this product"} from {selectedSeries?.name}.
                   Grab a CAD/ECAD package or jump to a supplier.
-                </p>
+                  </p>
+                </div>
+                <button
+                  class="self-start rounded border border-white/30 px-3 py-2 text-xs font-semibold text-white transition hover:border-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-900"
+                  type="button"
+                  on:click={() => (selectedPart = null)}
+                >
+                Pick a different product
+                </button>
               </div>
-              <button
-                class="self-start rounded border border-white/30 px-3 py-2 text-xs font-semibold text-white transition hover:border-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-900"
-                type="button"
-                on:click={() => (selectedPart = null)}
-              >
-                Pick a different variant
-              </button>
-            </div>
 
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-2 rounded-lg bg-white/5 p-4">
@@ -1502,7 +1454,7 @@
 
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-2 rounded-lg bg-white/5 p-4">
-                <p class="text-sm font-semibold text-white">Buy this variant</p>
+                <p class="text-sm font-semibold text-white">Buy this product</p>
                 {#if selectedPart.purchaseLinks && selectedPart.purchaseLinks.length}
                   <div class="flex flex-wrap gap-2">
                     {#each selectedPart.purchaseLinks as link}
@@ -1517,7 +1469,7 @@
                     {/each}
                   </div>
                 {:else}
-                  <p class="text-xs text-slate-200">No distributor links yet — try a different variant or series.</p>
+                  <p class="text-xs text-slate-200">No distributor links yet — try a different product.</p>
                 {/if}
               </div>
 
@@ -1545,7 +1497,7 @@
                     </a>
                   {/if}
                   {#if !selectedPart.cadUrl && !selectedPart.ecadUrl}
-                    <p class="text-xs text-slate-200">No CAD/ECAD links yet for this variant.</p>
+                    <p class="text-xs text-slate-200">No CAD/ECAD links yet for this product.</p>
                   {/if}
                 </div>
               </div>
@@ -1578,7 +1530,7 @@
             <form class="space-y-3 rounded-lg bg-white p-4 shadow-sm" on:submit|preventDefault={submitReport}>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="block space-y-1">
-                  <span class="text-sm font-semibold text-slate-800">Component series or variant</span>
+                  <span class="text-sm font-semibold text-slate-800">Component</span>
                   <input
                     class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="e.g. 2306 brushless motor"
@@ -1655,20 +1607,12 @@
       </div>
     </section>
 
-    <footer class="site-footer">
-      <p class="brand-title">Parametric</p>
-      <p class="muted">Built for engineers who want fewer tabs and faster decisions.</p>
-      <div class="footer-links">
-        <button class="ghost-button" type="button" on:click={() => (showReportForm = true)}>
-          Report an issue
-        </button>
-        {#if sessionAccount}
-          <button class="ghost-button" type="button" on:click={logout}>Log out</button>
-        {:else}
-          <button class="ghost-button" type="button" on:click={toggleLoginModal}>Log in</button>
-        {/if}
-      </div>
-    </footer>
+    <SiteFooter
+      {sessionAccount}
+      onReportClick={() => (showReportForm = true)}
+      onLoginClick={toggleLoginModal}
+      onLogoutClick={logout}
+    />
   </div>
 </div>
 
@@ -1678,7 +1622,7 @@
     min-height: 100vh;
     background: var(--page-gradient);
     color: var(--text-primary);
-    overflow: hidden;
+    overflow-x: hidden;
   }
 
   .page-glow {
@@ -1707,119 +1651,13 @@
   .page-container {
     position: relative;
     z-index: 1;
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 28px 18px 72px;
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-
-  .top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 18px;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--panel) 94%, transparent);
-    box-shadow: var(--card-shadow);
-    backdrop-filter: blur(12px);
-    flex-wrap: wrap;
-  }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .brand-icon {
-    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-    color: #fff;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    font-size: 0.9rem;
-    padding: 10px 12px;
-    border-radius: 12px;
-    box-shadow: var(--glow);
-  }
-
-  .brand-title {
-    margin: 0;
-    font-weight: 700;
-    font-size: 1.05rem;
-  }
-
-  .brand-subtitle {
-    margin: 2px 0 0;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-  }
-
-  .top-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .account-chip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--panel) 90%, transparent);
-  }
-
-  .account-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 999px;
-    overflow: hidden;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(79, 123, 191, 0.45), rgba(56, 189, 248, 0.4));
-    color: #0f172a;
-    font-weight: 700;
-  }
-
-  .account-avatar img {
+    max-width: none;
     width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .account-meta {
+    margin: 0 auto;
+    padding: 28px clamp(16px, 3vw, 32px) 72px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-  }
-
-  .account-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .account-email {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .admin-badge {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #0f172a;
-    background: rgba(250, 204, 21, 0.5);
-    padding: 2px 6px;
-    border-radius: 999px;
+    gap: 24px;
   }
 
   .hero-panel {
@@ -1969,6 +1807,7 @@
   .stack {
     position: relative;
     z-index: 1;
+    scroll-margin-top: 32px;
   }
 
   .content-stack {
@@ -2113,7 +1952,19 @@
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
-    justify-content: flex-end;
+    justify-content: center;
+    margin-top: 14px;
+  }
+
+  .modal-link {
+    border: none;
+    background: transparent;
+    color: var(--accent-strong);
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    align-self: flex-start;
+    padding: 0;
   }
 
   .modal-note {

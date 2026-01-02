@@ -1,4 +1,10 @@
 <script lang="ts">
+  import { dev } from "$app/environment";
+  import { onMount } from "svelte";
+  import SiteFooter from "$lib/components/SiteFooter.svelte";
+  import SiteHeader from "$lib/components/SiteHeader.svelte";
+  import type { SessionAccount } from "$lib/types/account";
+  export let data: { account: SessionAccount | null };
   type TrendId = "motor-power" | "esc-current" | "battery-density";
 
   const categories = [
@@ -87,6 +93,9 @@
   let zoomLevel = 1;
   let svgRef: SVGSVGElement | null = null;
   let hovered: { point: PlotPoint; x: number; y: number } | null = null;
+  let sessionAccount: SessionAccount | null = data.account ?? null;
+  let isAuthLoading = false;
+  $: showAdminButton = dev || !!sessionAccount?.isAdmin;
 
   function getDomain(points: PlotPoint[], axis: "x" | "y") {
     if (!points.length) return { min: 0, max: 1 };
@@ -179,19 +188,51 @@
   function handleMouseLeave() {
     hovered = null;
   }
+
+  onMount(() => {
+    if (!sessionAccount) {
+      fetchSession();
+    }
+  });
+
+  async function fetchSession() {
+    isAuthLoading = true;
+    try {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) {
+        sessionAccount = null;
+        return;
+      }
+
+      const data = await res.json();
+      sessionAccount = data.account ?? null;
+    } catch (error) {
+      console.error("Session check failed", error);
+      sessionAccount = null;
+    } finally {
+      isAuthLoading = false;
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout failed", error);
+    } finally {
+      sessionAccount = null;
+    }
+  }
 </script>
 
 <div class="page-shell">
   <div class="page-container">
-    <header class="top-bar">
-      <a class="brand brand-link" href="/">
-        <div class="brand-icon">P</div>
-        <div>
-          <p class="brand-title">Parametric</p>
-          <p class="brand-subtitle">Engineering-grade trends</p>
-        </div>
-      </a>
-    </header>
+    <SiteHeader
+      {sessionAccount}
+      {isAuthLoading}
+      {showAdminButton}
+      onLogoutClick={logout}
+    />
 
     <section class="hero-panel">
       <p class="eyebrow">Trends</p>
@@ -388,14 +429,7 @@
       {/if}
     </section>
 
-    <footer class="site-footer">
-      <p class="brand-title">Parametric</p>
-      <p class="muted">Built for engineers who want fewer tabs and faster decisions.</p>
-      <div class="footer-links">
-        <a class="ghost-button" href="/#report">Report an issue</a>
-        <a class="ghost-button" href="/?login=1">Log in</a>
-      </div>
-    </footer>
+    <SiteFooter {sessionAccount} onLogoutClick={logout} />
   </div>
 </div>
 
@@ -407,48 +441,12 @@
   }
 
   .page-container {
-    max-width: 1120px;
+    width: 100%;
+    max-width: none;
     margin: 0 auto;
-    padding: 28px 18px 72px;
+    padding: 28px clamp(16px, 3vw, 32px) 72px;
     display: grid;
     gap: 20px;
-  }
-
-  .top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
-    box-shadow: var(--card-shadow);
-  }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .brand-icon {
-    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-    color: #0d1424;
-    font-weight: 800;
-    padding: 10px;
-    border-radius: 12px;
-  }
-
-  .brand-title {
-    margin: 0;
-    font-weight: 700;
-  }
-
-  .brand-subtitle {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.9rem;
   }
 
   .hero-panel {
@@ -648,29 +646,6 @@
   .strong-button {
     box-shadow: var(--glow);
     border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
-  }
-
-  .brand-link {
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .site-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-    padding: 18px 16px;
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--panel) 96%, transparent);
-    box-shadow: var(--card-shadow);
-  }
-
-  .footer-links {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
   }
 </style>
 
